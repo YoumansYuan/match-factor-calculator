@@ -105,6 +105,10 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
   near('January: water truck unavailable → frozen-ground dust 0.4', w.dust, 0.4, 0);
   const f = siteConditions({ date: '2026-07-15', skyId: 'fog', surfaceId: 'wet' }, { shiftStart: '07:00', shiftEnd: '19:00' });
   near('fog visibility cap km/h', f.capKmh, 25, 0);
+  const dn = siteConditions({ date: '2026-12-15', skyId: 'clear', surfaceId: 'dry' }, { shiftPattern: 'daynight', shiftStart: '07:00', shiftEnd: '19:00', nightStart: '19:00', nightEnd: '05:00', nonProdMin: 60, jobEffMin: 55, standby: { faceMin: 30 } });
+  near('day + night 12 h + 10 h scheduled', dn.schedH, 22, 1e-9); near('night shift operating 10 h − 1 h', dn.shifts[1].operatingH, 9, 1e-9);
+  near('average operating hours per shift', dn.operatingH, 10, 1e-9); near('utilization weighted: 1 − 2×30 min / 1200 min', dn.utilization, 1 - 60 / 1200, 1e-9);
+  near('night shift in December is all dark', dn.shifts[1].darkFrac, 1, 1e-6);
 }
 // Materials: loose = dig-face / (1 + swell); blasted rock keeps 2.30 into the truck
 {

@@ -7,7 +7,7 @@
 //   × job efficiency (small operational delays only)
 //   × condition factor (weather visibility × dust × darkness)
 // Speed caps from visibility are applied to the haul itself, not as an efficiency.
-import { SKY, SURFACES, GRADING, MONTHLY_TEMP_C } from './data/equipment.js?v=202611272144';
+import { SKY, SURFACES, GRADING, MONTHLY_TEMP_C } from './data/equipment.js?v=202611272213';
 
 const rad = d => d * Math.PI / 180;
 const byId = (list, id) => list.find(x => x.id === id);
@@ -78,24 +78,30 @@ export function siteConditions(site, ops) {
   // dust only on a dry road; frozen ground raises less dust
   // frozen ground raises much less dust (light dust only, no speed cap)
   const dust = surface.id === 'dry' && !['rain', 'snowing'].includes(sky.id) ? (1 - waterEff) * (tempC <= 0 ? 0.4 : 1) : 0;
-  // time model
-  const startH = clockToH(ops.shiftStart), endH = clockToH(ops.shiftEnd);
-  let shiftLenH = ((endH - startH) % 24 + 24) % 24; if (shiftLenH === 0) shiftLenH = 24;
-  const nShifts = Math.max(1, Math.round(+ops.shiftsPerDay || 1));
-  const nonProdH = Math.min(shiftLenH, (+ops.nonProdMin || 0) / 60);
-  const operatingH = Math.max(0.01, shiftLenH - nonProdH);
+  // time model: a day shift, and optionally a night shift with its own clock times.
+  // Every shift loses its own meetings / shift change, standby and fuelling; darkness is counted per shift.
+  const sun = solar(site.date, +site.latitude || 49.7, +site.longitude || -114.9, +site.utcOffsetStd || -7, site.dst !== false);
   const sb = ops.standby || {};
   const loaderStopMin = (+sb.faceMin || 0) + (+sb.blastMin || 0) + (+sb.relocMin || 0);
   const truckOnlyMin = +sb.fuelMin || 0;
-  const utilization = Math.max(0, 1 - loaderStopMin / (operatingH * 60));
-  const truckUtil = Math.max(0, 1 - truckOnlyMin / (operatingH * 60));
-  const sun = solar(site.date, +site.latitude || 49.7, +site.longitude || -114.9, +site.utcOffsetStd || -7, site.dst !== false);
-  const shifts = [];
-  for (let k = 0; k < nShifts; k++) {
-    const s0 = startH + k * shiftLenH;
-    shifts.push({ start: s0, end: s0 + shiftLenH, darkH: darkHours(s0, shiftLenH, sun.sunrise, sun.sunset) });
-  }
-  const darkFrac = shifts.reduce((a, s) => a + s.darkH, 0) / (nShifts * shiftLenH);
+  const lenOf = (a, b) => { const L = ((b - a) % 24 + 24) % 24; return L === 0 ? 24 : L; };
+  const dayStart = clockToH(ops.shiftStart), dayLen = lenOf(dayStart, clockToH(ops.shiftEnd));
+  const defs = [{ name: 'Day shift', start: dayStart, len: dayLen }];
+  const pattern = ops.shiftPattern || (Math.round(+ops.shiftsPerDay || 1) >= 2 ? 'consecutive' : 'day');
+  if (pattern === 'daynight') { const n0 = clockToH(ops.nightStart || ops.shiftEnd); defs.push({ name: 'Night shift', start: n0, len: lenOf(n0, clockToH(ops.nightEnd || ops.shiftStart)) }); }
+  else if (pattern === 'consecutive') { const n = Math.max(2, Math.round(+ops.shiftsPerDay || 2)); for (let k = 1; k < n; k++) defs.push({ name: `Shift ${k + 1}`, start: dayStart + k * dayLen, len: dayLen }); }
+  const shifts = defs.map(d => {
+    const nonProdH = Math.min(d.len, (+ops.nonProdMin || 0) / 60), operatingH = Math.max(0.01, d.len - nonProdH);
+    const darkH = darkHours(d.start, d.len, sun.sunrise, sun.sunset);
+    return { name: d.name, start: d.start, end: d.start + d.len, lenH: d.len, nonProdH, operatingH, darkH, darkFrac: darkH / d.len,
+      utilization: Math.max(0, 1 - loaderStopMin / (operatingH * 60)), truckUtil: Math.max(0, 1 - truckOnlyMin / (operatingH * 60)) };
+  });
+  const nShifts = shifts.length, schedH = shifts.reduce((a, x) => a + x.lenH, 0), opSum = shifts.reduce((a, x) => a + x.operatingH, 0);
+  // the engine works with one average shift: operating-hour weighted averages give the same tonnes per day
+  const shiftLenH = schedH / nShifts, nonProdH = shifts.reduce((a, x) => a + x.nonProdH, 0) / nShifts, operatingH = opSum / nShifts;
+  const utilization = shifts.reduce((a, x) => a + x.operatingH * x.utilization, 0) / opSum;
+  const truckUtil = shifts.reduce((a, x) => a + x.operatingH * x.utilization * x.truckUtil, 0) / opSum / (utilization || 1);
+  const darkFrac = shifts.reduce((a, x) => a + x.darkH, 0) / schedH;
   const skyF = sky.eff, dustF = 1 - A.dustEffLoss * dust, darkF = 1 - A.darkEffLoss * darkFrac;
   const condFactor = skyF * dustF * darkF;
   // speed caps: visibility (sky) and a slippery road surface (snow / ice); the lowest applies
@@ -109,7 +115,7 @@ export function siteConditions(site, ops) {
   const jobEff = Math.min(60, Math.max(0, +ops.jobEffMin || 0)) / 60;
   return {
     tempC, tempAuto, sky, surface, water, waterEff, dust, sun, shifts, darkFrac, capKmh,
-    shiftLenH, nShifts, nonProdH, operatingH, loaderStopMin, truckOnlyMin, utilization, truckUtil, jobEff,
+    shiftLenH, schedH, nShifts, nonProdH, operatingH, loaderStopMin, truckOnlyMin, utilization, truckUtil, jobEff,
     skyF, dustF, darkF, condFactor, assumptions: A,
   };
 }

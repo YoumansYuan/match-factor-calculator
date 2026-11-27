@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611272144">
+  <link rel="stylesheet" href="css/styles.css?v=202611272213">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -130,15 +130,18 @@
 <section id="tab-calc" class="tabpanel">
   <div class="layout">
     <div class="inputs">
+      <nav class="subtabs" id="calc-sub" aria-label="Input sections">
+        <button data-sub="equip">Fleet &amp; material</button><button data-sub="road">Road &amp; profile</button><button data-sub="ops">Shifts &amp; method</button><button data-sub="season">Season schedule</button><button data-sub="all">All</button>
+      </nav>
 
-      <details class="card" open>
+      <details class="card" data-sec="road" open>
         <summary><span class="num">1</span> Site &amp; Haul Road</summary>
         <div class="grid g3">
           <label>Site latitude <span class="u">°N</span><input type="number" data-bind="site.latitude" step="0.1"></label>
           <label>Site longitude <span class="u">°E</span><input type="number" data-bind="site.longitude" step="0.1"></label>
-          <label class="span2">Road type (base rolling resistance)<select data-bind="site.roadId" id="sel-road"></select></label>
-          <label>Grader maintenance<select data-bind="site.gradingId" id="sel-grading"></select></label>
-          <label class="check"><input type="checkbox" data-bind="site.waterTruck" id="water-cb"> Water truck for dust control</label>
+          <label class="span2"><span>Road type (base rolling resistance) <span data-info="road"></span></span><select data-bind="site.roadId" id="sel-road"></select></label>
+          <label><span>Grader maintenance <span data-info="grading"></span></span><select data-bind="site.gradingId" id="sel-grading"></select></label>
+          <label class="check"><input type="checkbox" data-bind="site.waterTruck" id="water-cb"> Water truck for dust control <span data-info="water"></span></label>
           <div class="resolved span2" id="site-derived"></div>
           <label>Rolling resistance override <span class="u">%</span><input type="number" data-bind="site.rrOverride" step="0.1" placeholder="auto"></label>
           <label>Traction coefficient override<input type="number" data-bind="site.tractionOverride" step="0.01" placeholder="auto"></label>
@@ -150,13 +153,13 @@
         </div>
       </details>
 
-      <details class="card" open>
+      <details class="card" data-sec="season" open>
         <summary><span class="num">S</span> Seasonal schedule (month-by-month weather)</summary>
         <p class="note">Each month's days are split into dense fog, heavy snowfall, light snowfall, rain, dry with a snow-packed road, and dry days, from the site climate. Every day type is run through the same fleet, road and shift model, then weighted by its number of days. The weather slider in the top bar moves every month from the station median towards a 1-in-10 good year (left) or a 1-in-10 bad year (right). Working days per month = calendar days × working days per year ÷ 365. <button class="link" data-climate-open>Edit the monthly climate</button></p>
         <div id="season-out"></div>
       </details>
 
-      <details class="card" open>
+      <details class="card" data-sec="equip" open>
         <summary><span class="num">2</span> Material</summary>
         <div class="grid g4">
           <label class="span2">Material<select id="sel-material" class="sel-material"></select></label>
@@ -171,19 +174,19 @@
         </div>
       </details>
 
-      <details class="card" open>
+      <details class="card" data-sec="equip" open>
         <summary><span class="num">3</span> Loading Units</summary>
         <div id="loader-rows" class="rows"></div>
         <button class="btn ghost" id="add-loader">+ Add loading unit</button>
       </details>
 
-      <details class="card" open>
+      <details class="card" data-sec="equip" open>
         <summary><span class="num">4</span> Haul Trucks <small class="muted">— mixed fleets supported</small></summary>
         <div id="truck-rows" class="rows"></div>
         <button class="btn ghost" id="add-truck">+ Add truck type</button>
       </details>
 
-      <details class="card" open>
+      <details class="card" data-sec="road" open>
         <summary><span class="num">5</span> Haul Profile</summary>
         <div class="profile-src">
           <label class="btn file">Upload CSV<input type="file" id="profile-file" accept=".csv,.txt"></label>
@@ -202,12 +205,14 @@
         <div class="kv" id="profile-summary"></div>
       </details>
 
-      <details class="card">
+      <details class="card" data-sec="ops" open>
         <summary><span class="num">6</span> Operations &amp; Method</summary>
         <div class="grid g4">
-          <label>Shift starts<input type="time" data-bind="ops.shiftStart"></label>
-          <label>Shift ends<input type="time" data-bind="ops.shiftEnd"></label>
-          <label>Shifts per day<input type="number" data-bind="ops.shiftsPerDay" step="1" min="1" max="3"></label>
+          <label>Shift pattern<select data-bind="ops.shiftPattern"><option value="day">Day shift only</option><option value="daynight">Day + night shift</option></select></label>
+          <label>Day shift starts<input type="time" data-bind="ops.shiftStart"></label>
+          <label>Day shift ends<input type="time" data-bind="ops.shiftEnd"></label>
+          <label class="night-only">Night shift starts<input type="time" data-bind="ops.nightStart"></label>
+          <label class="night-only">Night shift ends<input type="time" data-bind="ops.nightEnd"></label>
           <label>Operating days / year<input type="number" data-bind="ops.daysPerYear" step="1"></label>
           <label>Meetings, planning, shift change <span class="u">min/shift</span><input type="number" data-bind="ops.nonProdMin" step="5"></label>
           <label>Face clean-up / dozer support <span class="u">min/shift</span><input type="number" data-bind="ops.standby.faceMin" step="5"></label>
@@ -324,6 +329,6 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611272144"></script>
+<script type="module" src="js/app.js?v=202611272213"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272144';
-import { unit, fmt, fmtU, toDisp } from './units.js?v=202611272144';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272213';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611272213';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
@@ -139,7 +139,7 @@ operating time   = scheduled − meetings / planning / shift change  (e.g. 12 h 
 truck capacity  = Σ trucks_i × availability_i × load_i / cycle_i × bunching × truck util.
 loader capacity = Σ_j (loaders_j × availability_j / lt_j) × Σ_i trucks_i × availability_i × load_i
 production (t/operating h) = min(truck capacity, loader capacity) × job efficiency × utilization × condition
-per shift = production × operating time;  per year = × shifts per day × days per year
+per shift = production × operating time;  per day = Σ over the day shift and (if used) the night shift, each with its own clock times, meetings, standby, fuelling and darkness;  per year = per day × days per year
 target: tonnes = target volume × (bank density if BCM, loose density if LCM);  working days = tonnes / (production per day)
    blasted rock and rehandle default to LCM (muck pile / stockpile volume at 2.3 t/m³), other materials to BCM;
    calendar days = working days × 365 / working days per year, counted from the work date

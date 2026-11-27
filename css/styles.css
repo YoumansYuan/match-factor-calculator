@@ -446,3 +446,22 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
 .btn.sm { padding: 4px 10px; font-size: 12px; }
 .projbar input[type=number], .projbar input[type=date], .projbar select { padding: 4px 6px; }
 #climate-dlg { max-width: 1100px; width: calc(100vw - 48px); }
+.wf-h { margin: 8px 0 0; font-size: 13px; color: var(--ink); } .wf-h small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.wf-day { grid-template-columns: minmax(150px, 2.2fr) 1fr 2fr; border-top: 1px solid var(--line); padding-top: 6px; margin-top: 4px; }
+/* hover ⓘ tables */
+.info { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; font-size: 12px; line-height: 1; color: var(--accent-ink); cursor: help; vertical-align: 1px; font-style: normal; }
+.info-tip { display: none; position: absolute; z-index: 60; top: 20px; left: -12px; width: max-content; max-width: 560px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.25); padding: 10px 12px; font-size: 12px; font-weight: 400; line-height: 1.45; white-space: normal; text-align: left; cursor: default; }
+.info:hover .info-tip, .info:focus .info-tip, .info:focus-within .info-tip { display: block; }
+.info-tip table { border-collapse: collapse; margin: 6px 0; width: 100%; }
+.info-tip th, .info-tip td { padding: 3px 8px 3px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.info-tip th { color: var(--muted); font-weight: 600; font-size: 11px; }
+.info-tip tr.sel td { color: var(--accent-ink); font-weight: 600; }
+.info-tip small { color: var(--muted); display: block; }
+.day-only .night-only { display: none; }
+.season-chart .pdate { font-weight: 600; fill: var(--ink); }
+.season-chart .pfinish { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 3; }
+.info.flip .info-tip { left: auto; right: -12px; }
+.subtabs { display: flex; gap: 2px; background: var(--panel-2); padding: 3px; border-radius: 9px; border: 1px solid var(--line); margin-bottom: 14px; position: sticky; top: var(--hdr-h, 0px); z-index: 10; }
+.subtabs button { flex: 1; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+.subtabs button.active { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); font-weight: 600; }
+[data-sec][hidden] { display: none; }

@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611272144';
-import { hToClock } from './conditions.js?v=202611272144';
-import { byId } from './engine.js?v=202611272144';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611272144';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611272213';
+import { hToClock } from './conditions.js?v=202611272213';
+import { byId } from './engine.js?v=202611272213';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611272213';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -297,10 +297,10 @@ function renderSummary() {
       <div class="v-sug">${sug}</div>
     </div>
     <div class="v-stats">
-      <div class="v-stat"><span class="lbl">Moved per hour${R.season ? ' · season average' : ''}</span><b>${fmtU('rate', R.prod.tph, 0)}</b><small>${fmtU('mass', R.prod.shiftT, 0)} per shift (${hm(api.cond().operatingH)} operating)</small></div>
+      <div class="v-stat"><span class="lbl">Moved per hour${R.season ? ' · season average' : ''}</span><b>${fmtU('rate', R.prod.tph, 0)}</b><small>${fmtU("mass", R.prod.dayT, 0)} per day · ${api.cond().nShifts > 1 ? "day + night shift" : "day shift"}</small></div>
       <div class="v-stat"><span class="lbl">Volume per hour</span><b>${fmt('vol', R.prod.tph / api.matDerived().bank, 0)} ${api.bcU()}</b><small>dug · ${fmt('vol', R.prod.tph / api.matDerived().loose, 0)} ${api.lcU()} at the dump</small></div>
       ${targetCard()}
-      <div class="v-stat"><span class="lbl">Per year</span><b>${fmt('mass', R.prod.yearT / 1e6, 2)} M ${unit('mass')}</b><small>${st.ops.daysPerYear} days, ${st.ops.shiftsPerDay} shifts/day</small></div>
+      <div class="v-stat"><span class="lbl">Per year</span><b>${fmt('mass', R.prod.yearT / 1e6, 2)} M ${unit('mass')}</b><small>${st.ops.daysPerYear} days · ${st.ops.shiftPattern === 'daynight' ? 'day + night shift' : 'day shift only'}</small></div>
       <div class="v-stat"><span class="lbl">Slowest link</span><b>${/^loaders/.test(R.prod.bottleneck) ? 'Excavator' : 'Trucks'}</b><small>${/^loaders/.test(R.prod.bottleneck) ? 'trucks queue at the excavator' : 'the excavator waits for trucks'}</small></div>
       <div class="v-stat"><span class="lbl">Fuel</span><b>${fmt('fuelpm', R.fuel.lPerT, 2)} ${unit('fuelpm')}</b><small>${fmt('co2pm', R.fuel.co2KgPerT, 2)} ${unit('co2pm')} CO₂</small></div>
     </div>
@@ -408,9 +408,9 @@ function renderPop() {
       </div>
       <h4>Road</h4>
       <div class="grid g2">
-        <label>Road type<select data-bind="site.roadId">${ROADS.map(x => `<option value="${x.id}" ${x.id === st.site.roadId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
-        <label>Grader maintenance<select data-bind="site.gradingId">${GRADING.map(x => `<option value="${x.id}" ${x.id === st.site.gradingId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
-        <label class="check"><input type="checkbox" data-bind="site.waterTruck"> Water truck for dust control <small>(used only when it is above freezing)</small></label>
+        <label><span>Road type ${api.infoHTML('road')}</span><select data-bind="site.roadId">${ROADS.map(x => `<option value="${x.id}" ${x.id === st.site.roadId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        <label><span>Grader maintenance ${api.infoHTML('grading')}</span><select data-bind="site.gradingId">${GRADING.map(x => `<option value="${x.id}" ${x.id === st.site.gradingId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        <label class="check"><input type="checkbox" data-bind="site.waterTruck"> Water truck for dust control ${api.infoHTML('water')}</label>
         <label>Speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.speedLimitKmh" data-q="speed"></label>
         <label>Downhill speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.downhillLimitKmh" data-q="speed"></label>
         <label>Apply it on descents steeper than <span class="u">% (e.g. −9)</span><input type="number" step="0.5" data-bind="site.downhillGradePct"></label>
@@ -423,9 +423,11 @@ function renderPop() {
     title.textContent = 'Work hours';
     const c = api.cond();
     body.innerHTML = `<div class="grid g2">
-      <label>Shift starts<input type="time" data-bind="ops.shiftStart"></label>
-      <label>Shift ends<input type="time" data-bind="ops.shiftEnd"></label>
-      <label>Shifts per day<input type="number" step="1" min="1" max="3" data-bind="ops.shiftsPerDay"></label>
+      <label>Shift pattern<select data-bind="ops.shiftPattern"><option value="day">Day shift only</option><option value="daynight">Day + night shift</option></select></label>
+      <label>Day shift starts<input type="time" data-bind="ops.shiftStart"></label>
+      <label>Day shift ends<input type="time" data-bind="ops.shiftEnd"></label>
+      <label class="night-only">Night shift starts<input type="time" data-bind="ops.nightStart"></label>
+      <label class="night-only">Night shift ends<input type="time" data-bind="ops.nightEnd"></label>
       <label>Working days per year<input type="number" step="1" data-bind="ops.daysPerYear"></label>
       <label>Meetings, planning, shift change <span class="u">min/shift</span><input type="number" step="5" data-bind="ops.nonProdMin"></label>
       <label>Job efficiency <span class="u">productive min per hour</span><input type="number" step="1" max="60" data-bind="ops.jobEffMin"></label>
