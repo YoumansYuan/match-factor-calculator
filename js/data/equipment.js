@@ -7,10 +7,14 @@ export const SOURCES = {
   CAT745WEB: 'cat.com — 745 Articulated Truck specifications (current model, Tier 4 Final / Stage V)',
   JD460: 'John Deere 460 P-Tier ADT spec sheet MT460PAU (deere.com)',
   CAT385C: 'Cat 385C L Hydraulic Excavator specalog',
-  KOM32: 'Komatsu Specifications & Application Handbook, Edition 32 (2019)',
+  KOM32: 'Komatsu Specifications & Application Handbook, Edition 32 (2019) — excavator conversion factor p.15A-10, backhoe vs same-floor loading p.3A-131',
   MIME333: 'McGill MIME 333 Materials Handling — Ch.3 Loading & Haulage Equipment (Mitri & Sasmito)',
   TANNANT: 'Tannant & Regensburg (2001) Guidelines for Mine Haul Road Design',
   BURT: 'Burt & Caccetta (2007) Match factor for heterogeneous truck and loader fleets, IJMRE 21(4); Corrigendum IJMRE 22(1) 2008',
+  CATBENCH: 'Caterpillar (2021) Tips for truck loading from a bench, cat.com; Bennink (2006) Optimize earthmover operations, ForConstructionPros',
+  TEREX: 'Tegtmeier, Terex O&K — Reaching maximum potential (bench height, slew angle, spotting), Agg-Net',
+  LITVIN: 'Litvin & Litvin (2020) Evaluation of effect of the excavator cycle duration on its productivity, E3S Web Conf. 174, 01010',
+  MOLAEI: 'Molaei, Geimer & Kolu (2023) Evaluation of deterministic models for the excavator\'s theoretical productivity estimation, EC3 2023 (reproduces the Komatsu conversion-factor table)',
 };
 
 // Curves: rimpull = array of [speed km/h, rimpull tonnes-force (x1000 kgf)] — upper envelope of all gears, sea level.
@@ -134,12 +138,12 @@ export const LOADERS = [
     engine: 'Cat C18 ACERT',
     swingRpm: null,
     buckets: [ // heaped SAE capacity, max loading height with teeth (range dimension "A")
-      { id: 'gd39', label: 'GD 3.9 m³ (Reach boom, R4.4 stick)', m3: 3.9, loadHeightM: 10.53 },
-      { id: 'sd46', label: 'SD 4.6 m³ (GP boom, 3.4 m stick)', m3: 4.6, loadHeightM: 9.10 },
-      { id: 'gd46', label: 'GD 4.6 m³ (GP boom, 4.4 m stick)', m3: 4.6, loadHeightM: 9.28 },
-      { id: 'hc53', label: 'HC 5.3 m³ (High capacity)', m3: 5.3, loadHeightM: 9.10 },
-      { id: 'sdv60', label: 'SDV 6.0 m³ (Mass boom, 2.92 m stick)', m3: 6.0, loadHeightM: 7.99 },
-      { id: 'hc65', label: 'HC 6.5 m³ (High capacity, light material)', m3: 6.5, loadHeightM: 7.99 },
+      { id: 'gd39', label: 'GD 3.9 m³ (Reach boom, R4.4 stick)', m3: 3.9, loadHeightM: 10.53, digDepthM: 10.70, stickM: 4.4 },
+      { id: 'sd46', label: 'SD 4.6 m³ (GP boom, 3.4 m stick)', m3: 4.6, loadHeightM: 9.10, digDepthM: 8.68, stickM: 3.4 },
+      { id: 'gd46', label: 'GD 4.6 m³ (GP boom, 4.4 m stick)', m3: 4.6, loadHeightM: 9.28, digDepthM: 9.65, stickM: 4.4 },
+      { id: 'hc53', label: 'HC 5.3 m³ (High capacity)', m3: 5.3, loadHeightM: 9.10, digDepthM: 8.68, stickM: 3.4 },
+      { id: 'sdv60', label: 'SDV 6.0 m³ (Mass boom, 2.92 m stick)', m3: 6.0, loadHeightM: 7.99, digDepthM: 7.16, stickM: 2.92 },
+      { id: 'hc65', label: 'HC 6.5 m³ (High capacity, light material)', m3: 6.5, loadHeightM: 7.99, digDepthM: 7.16, stickM: 2.92 },
     ],
     defaultBucket: 'sd46',
     // Total cycle time (s) by CAT job condition A (excellent) … E (severe), 60–90° swing, average operator.
@@ -147,11 +151,11 @@ export const LOADERS = [
     altitude: [[0, 1], [3800, 1], [4600, 0.97]],
     fuelLoadFactor: 0.55,
     src: {
-      specs: 'CAT47 p.7-40 (engine power, operating weight); p.7-116 range dimensions; p.7-178 bucket list',
+      specs: 'CAT47 p.7-40 (engine power, operating weight); p.7-116 range dimensions (A loading height, C max digging depth, stick length); p.7-178 bucket list',
       cycle: 'CAT47 p.7-246/7-248 Cycle Time Estimating Chart (385C class: fastest ≈ 0.42 min, typical 0.58–0.75 min); cross-checked with Komatsu PC800–PC1250 standard cycles (KOM32 p.15A-10)',
       altitude: 'CAT47 p.30-10 Altitude Deration (390F L1/L2/L3 rows)',
     },
-    estimate: { cycle: 'Per-condition cycle times interpolated from the handbook chart bands.' },
+    estimate: { cycle: 'Per-condition cycle times interpolated from the handbook chart bands.', digDepth: 'HC 5.3 / HC 6.5 digging depth taken from the GP 3.4 m / Mass 2.92 m stick rows.' },
   },
   {
     id: 'cat385cl',
@@ -162,10 +166,10 @@ export const LOADERS = [
     engine: 'Cat C18 ACERT',
     swingRpm: 6.5,
     buckets: [
-      { id: 'hb46', label: 'GP 4.6 m³ (HB family)', m3: 4.6, loadHeightM: 9.1 },
-      { id: 'jb45', label: 'HD Rock 4.5 m³ (JB family)', m3: 4.5, loadHeightM: 9.1 },
-      { id: 'jb58', label: 'GP 5.8 m³ (JB family)', m3: 5.8, loadHeightM: 8.0 },
-      { id: 'hb38', label: '3.8 m³ (HB family)', m3: 3.8, loadHeightM: 10.5 },
+      { id: 'hb46', label: 'GP 4.6 m³ (HB family)', m3: 4.6, loadHeightM: 9.1, digDepthM: 8.7, stickM: 3.4 },
+      { id: 'jb45', label: 'HD Rock 4.5 m³ (JB family)', m3: 4.5, loadHeightM: 9.1, digDepthM: 8.7, stickM: 3.4 },
+      { id: 'jb58', label: 'GP 5.8 m³ (JB family)', m3: 5.8, loadHeightM: 8.0, digDepthM: 7.2, stickM: 2.92 },
+      { id: 'hb38', label: '3.8 m³ (HB family)', m3: 3.8, loadHeightM: 10.5, digDepthM: 10.7, stickM: 4.4 },
     ],
     defaultBucket: 'hb46',
     cycleS: { A: 24, B: 28, C: 32, D: 38, E: 45 },
@@ -176,7 +180,7 @@ export const LOADERS = [
       cycle: 'CAT47 p.7-248 Cycle Time Estimating Chart, 385C column',
       altitude: 'Not in CAT47 deration table — assumed same C18 behaviour (no derate below 3000 m)',
     },
-    estimate: { loadHeight: 'Loading heights assumed equal to 390F L equivalent boom/stick (same front-linkage family).', altitude: true, cycle: true },
+    estimate: { loadHeight: 'Loading heights, digging depths and stick lengths assumed equal to the 390F L equivalent boom/stick (same front-linkage family).', altitude: true, cycle: true },
   },
 ];
 
@@ -188,6 +192,7 @@ export const MATERIALS = [
   { id: 'overburden', name: 'Overburden', digTm3: 2.28, swellPct: 33, fill: 0.90, src: 'CAT47 p.30-6 "Decomposed rock 50 % rock / 50 % earth": bank 2 280, loose 1 720 kg/m³ (swell 33 %).' },
   { id: 'soil', name: 'Soil', digTm3: 2.02, swellPct: 26, fill: 1.00, src: 'CAT47 p.30-6 "Earth — wet excavated": bank 2 020, loose 1 600 kg/m³ (swell 26 %). Fill: moist loam 100–110 %.' },
   { id: 'till', name: 'Till (glacial)', digTm3: 2.20, swellPct: 22, fill: 0.90, src: 'Typical glacial till in-situ ≈ 2.2 t/m³, swell 22 % (estimate — not in CAT table; nearest "Clay & gravel"). Fill: "Soil, boulders, roots" 80–100 %. Verify with site tests.' },
+  { id: 'rehandle', name: 'Rehandle (blasted rock)', digTm3: 2.30, swellPct: 0, bankTm3: 2.99, fill: 0.90, blasted: true, rehandle: true, src: 'Blasted rock that has already been dumped once (stockpile / temporary dump) and is moved again: loose density 2.3 t/m³ per user, no further swell. Fill factor 0.9 (loosened, no digging out of the muck pile; Komatsu 15A-9 "well blasted rock" 0.90–0.95 for shovels) — estimate.' },
   { id: 'coal', name: 'Coal', digTm3: 1.75, swellPct: 35, fill: 0.95, src: 'Loose density 1.3 t/m³ per user; swell 35 % from CAT47 bituminous load factor 0.74 → in-situ ≈ 1.75 t/m³.' },
 ];
 export const looseOf = m => (+m.digTm3) / (1 + (+m.swellPct || 0) / 100);
@@ -236,6 +241,24 @@ export const VIS_SRC = 'Weather, dust and darkness factors are planning estimate
 
 // Approximate monthly mean air temperature (°C), Elk Valley BC (Sparwood area). Used only as a default.
 export const MONTHLY_TEMP_C = [-8, -5, 0, 5, 10, 14, 17, 16, 11, 5, -2, -7];
+
+// Digging face setup (where the excavator stands relative to the truck).
+// Cycle-time factor from the Komatsu Performance Handbook "Conversion factor for excavator" (KOM p.15A-10):
+// rows = digging depth / specified max digging depth, columns = dumping condition.
+// The CAT job-condition cycle times used as the base correspond to the Komatsu 1.0 cell (CAT C: depth to 50 %, swing to 60°,
+// large dump target), so the Komatsu factor is applied as a ratio to that cell.
+export const KOM_CYCLE_FACTOR = {
+  rows: [{ id: 'lt40', name: 'Below 40 %', max: 0.40 }, { id: '40to75', name: '40–75 %', max: 0.75 }, { id: 'gt75', name: 'Over 75 %', max: Infinity }],
+  cols: [{ id: 'easy', name: 'Easy (dump onto spoil pile)' }, { id: 'normal', name: 'Normal (large dump target)' }, { id: 'rather', name: 'Rather difficult (small dump target)' }, { id: 'difficult', name: 'Difficult (small target, maximum dumping reach)' }],
+  f: { lt40: [0.7, 0.9, 1.1, 1.4], '40to75': [0.8, 1.0, 1.3, 1.6], gt75: [0.9, 1.1, 1.5, 1.8] },
+  src: 'Komatsu Performance Handbook (MIME 333 copy) p.15A-10 "Conversion factor for excavator"; also reproduced in Molaei, Geimer & Kolu (2023), EC3 Heraklion, Table 4.',
+};
+export const SETUPS = [
+  { id: 'bench', name: 'On a bench above the truck (top loading)', short: 'On bench', swingDeg: 60, dumpCol: 'normal',
+    note: 'Excavator digs the face below its tracks (digging depth ≈ bench height) and dumps down into a truck on the lower level: low lift, good view of the body, short swing. Bench ≈ truck rail height and not higher than the stick length (CAT; Terex O&K). Komatsu 3A-131: for backhoes the bench should not exceed the dump-body height for efficient loading.' },
+  { id: 'floor', name: 'On the floor, same level as the truck', short: 'On floor', swingDeg: 110, dumpCol: 'rather',
+    note: 'Excavator digs material above its tracks and must lift every bucket over the side of a truck standing at the same level. Komatsu 3A-131: "requires a larger swing angle, cycle time is longer. Also, fuel consumption increases due to higher lift." Litvin & Litvin (2020): same-level loading is less productive than loading a truck below the excavator.' },
+];
 
 // Machine condition presets (age / reliability). All values are planning estimates — edit per site data.
 export const CONDITIONS = [

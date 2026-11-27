@@ -2,7 +2,7 @@
 // Methods follow MIME 333 Ch.3 (Mitri & Sasmito), the Caterpillar Performance Handbook Ed.47,
 // the Komatsu Specifications & Application Handbook Ed.32 and Burt & Caccetta (2007, corrigendum 2008).
 
-import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS } from './data/equipment.js?v=202611271723';
+import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611271841';
 
 export const G = 9.81;
 const BETA = 0.268;  // kg fuel / kW·h (MIME 333 formula sheet)
@@ -189,13 +189,29 @@ export function travel(truck, gmwKg, segs, ctx) {
 }
 
 // ---------------------------------------------------------------- loading
+// Digging-face setup factor (Komatsu 15A-10 conversion factor, relative to the CAT job-condition base = Komatsu 1.0 cell).
+// bench: digging depth ≈ bench height below the tracks, truck below → "Normal (large dump target)".
+// floor: digging above the tracks (depth row "below 40 %"), lifting over the side of a truck at the same level → "Rather difficult".
+export function setupFactor(loader) {
+  const st = byId(SETUPS, loader.setup);
+  if (!st) return { factor: 1, setup: null };
+  const depth = st.id === 'bench' ? Math.max(0, +loader.benchHeightM || 0) : 0;
+  const ratio = loader.digDepthM ? depth / loader.digDepthM : 0;
+  const row = KOM_CYCLE_FACTOR.rows.find(r => ratio < r.max) || KOM_CYCLE_FACTOR.rows.at(-1);
+  const col = KOM_CYCLE_FACTOR.cols.findIndex(c => c.id === st.dumpCol);
+  return { factor: KOM_CYCLE_FACTOR.f[row.id][col], setup: st, ratio, row, col: KOM_CYCLE_FACTOR.cols[col] };
+}
+export const swingOf = loader => {
+  if (loader.swingDeg != null && loader.swingDeg !== '') return +loader.swingDeg;
+  const st = byId(SETUPS, loader.setup); return st ? st.swingDeg : 90;
+};
 export function loaderCycleS(loader, model, ops, frozen) {
   if (loader.cycleOverrideS) return +loader.cycleOverrideS;
   const cond = byId(CONDITIONS, loader.conditionId) || CONDITIONS[1];
   const base = model.cycleS[loader.jobCond || 'C'];
-  const sw = loader.swingDeg ?? 90;
+  const sw = swingOf(loader);
   const swingAdj = Math.max(0, sw - 90) / 10 - Math.max(0, 60 - sw) / 10; // Komatsu: +1 s per 10° extra swing
-  return Math.max(8, (base + swingAdj) * cond.cycleMult * (frozen ? ops.frozenCycleMult : 1));
+  return Math.max(8, (base + swingAdj) * setupFactor(loader).factor * cond.cycleMult * (frozen ? ops.frozenCycleMult : 1));
 }
 
 export function passCount(raw, rule) {
@@ -224,7 +240,9 @@ export function matchPair(truck, truckIn, loader, model, material, ops) {
   const tc = loaderCycleS(loader, model, ops, material.frozen);
   const loadTimeS = ops.loadTimeMethod === 'komatsu' ? (Math.max(0, n - 1) + ops.firstPassFrac) * tc : n * tc;
   const overloadPct = (actualT / ratedT - 1) * 100;
-  const heightOk = (loader.loadHeightM || 99) >= truck.loadingHeightM + 0.5;
+  // on a bench the truck stands lower by the bench height
+  const benchUp = loader.setup === 'bench' ? Math.max(0, +loader.benchHeightM || 0) : 0;
+  const heightOk = (loader.loadHeightM || 99) + benchUp >= truck.loadingHeightM + 0.5;
   return { ff, bf, capM3, bucketM3, bucketT, nW, nV, raw, n, governs, loadT: actualT, ratedT, overloadPct, tc, loadTimeS, heightOk, volFillPct: n * bucketM3 / truck.heapedM3 * 100 };
 }
 
@@ -285,6 +303,7 @@ export function computeScenario(input) {
     pairs.forEach((p, j) => {
       if (p.n > 6 || p.n < 3) warnings.push(`${truck.name} × ${loaders[j].model.name}: ${(+p.n).toFixed(ops.passRule === 'exact' ? 1 : 0)} passes — outside the 3–6 pass range usually recommended.`);
       if (p.overloadPct > 10) warnings.push(`${truck.name} × ${loaders[j].model.name}: payload ${p.overloadPct.toFixed(0)} % over rated (CAT 10/10/20 policy: ≤ 10 % of loads may exceed +10 %).`);
+      if (loaders[j].setup === 'bench' && +loaders[j].benchHeightM > 0 && +loaders[j].benchHeightM < truck.loadingHeightM - 1) warnings.push(`${loaders[j].model.name} bench (${(+loaders[j].benchHeightM).toFixed(1)} m) is well below the ${truck.name} rail height (${truck.loadingHeightM.toFixed(1)} m): the bucket still has to lift over the rail — bench ≈ rail height works best.`);
       if (!p.heightOk) warnings.push(`${loaders[j].model.name} bucket loading height may be too low for ${truck.name} (needs ≥ truck loading height + 0.5 m).`);
     });
     const gmwLoaded = truck.emptyKg + loadT * 1000;

@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271723';
-import { hToClock } from './conditions.js?v=202611271723';
-import { byId } from './engine.js?v=202611271723';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271723';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271841';
+import { hToClock } from './conditions.js?v=202611271841';
+import { byId } from './engine.js?v=202611271841';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271841';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -129,40 +129,45 @@ function buildScene() {
   const svg = $('#scene'); if (!svg) return;
   const st = api.state();
   const W = sceneWidth(), H = 270, y0 = 212;
-  const yB = y0 - 58, crest = 160, toe = 168;            // bench for a second excavator
+  const yB = y0 - 58, crest = 160, toe = 168;            // bench top for an excavator standing on the dig face
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const mat = byId(MATERIALS, st.materialId);
   const units = [];
   st.loaders.forEach((l, i) => { for (let u = 0; u < (+l.count || 0); u++) units.push(i); });
-  const two = units.length >= 2;
-  // dig face: a bench top (upper excavator stands here) dropping to the pit floor (lower excavator)
+  // up to two excavators are drawn; bench units first (the first one stands on the dig-face bench)
+  const setupOf = i => st.loaders[i].setup || 'bench';
+  const drawn = units.slice(0, 2).sort((a, b) => (setupOf(a) === 'bench' ? 0 : 1) - (setupOf(b) === 'bench' ? 0 : 1));
+  // dig face: a bench top dropping to the pit floor
   const face = `M0,${yB - 62} L20,${yB - 60} L34,${yB - 40} L30,${yB - 22} L44,${yB} L${crest},${yB} L${toe - 3},${yB + 30} L${toe},${y0} L0,${y0} Z`;
   const line = [];
   st.trucks.forEach((t, i) => { for (let k = 0; k < (+t.count || 0); k++) line.push(i); });
   const tm = k => byId(TRUCKS, st.trucks[line[k]].modelId);
-  // upper excavator (on the bench) loads the second truck from above; lower one loads the first truck beside it
-  const xB = 112, bucketB = xB + 66;
-  let truckBx = null, xA;
-  if (two) {
-    if (line.length >= 2) truckBx = bucketB + 14 * truckScale(tm(0));
-    const frontB = truckBx != null ? truckBx + 39 * truckScale(tm(0)) : toe + 40;
-    xA = Math.max(toe + 50, frontB + 50);
-  } else xA = toe + 52;
-  const aIdx = truckBx != null ? 1 : 0;
-  const truckAx = xA + 72 + (line.length ? 14 * truckScale(tm(aIdx)) : 14);
   const exG = (i, x, y, pose, lblY) => {
     const m = byId(LOADERS, st.loaders[i].modelId);
-    return `<g class="hot ex" data-pop="loader:${i}" tabindex="0" role="button" aria-label="Change excavator: ${esc(m.name)}" transform="translate(${x},${y})">
+    return `<g class="hot ex" data-pop="loader:${i}" tabindex="0" role="button" aria-label="Change excavator: ${esc(m.name)} (${setupOf(i) === 'bench' ? 'on a bench' : 'on the floor'})" transform="translate(${x},${y})">
       ${excavatorSVG(m, pose)}<text class="lbl-sm" x="0" y="${lblY}" text-anchor="middle">${esc(m.name)}</text></g>`;
   };
-  let ex = '';
-  if (two) ex += exG(units[1], xB, yB, 'low', -66);
-  if (units.length) ex += exG(units[0], xA, y0, 'dump', 17);
-  else ex = `<g class="hot slot" data-pop="add-loader" tabindex="0" role="button" aria-label="Add an excavator" transform="translate(${xA},${y0})"><rect x="-42" y="-70" width="84" height="70" rx="10"/><text x="0" y="-30" text-anchor="middle">+ Excavator</text></g>`;
-  if (units.length > 2) ex += `<text class="lbl-sm" x="${xA}" y="${y0 + 32}" text-anchor="middle">+ ${units.length - 2} more excavator${units.length > 3 ? 's' : ''} (not drawn)</text>`;
+  // loading stations, left to right; each takes the next truck in the line
+  let ex = '', pads = '', cursor = toe;
+  const spots = [];
+  drawn.forEach((u, k) => {
+    const bench = setupOf(u) === 'bench', sc = spots.length < line.length ? truckScale(tm(spots.length)) : 1;
+    let x;
+    if (bench) {
+      if (k === 0) x = 112;                                   // on the dig-face bench
+      else { x = cursor + 60; pads += `<path d="M${x - 52},${y0} L${x - 48},${yB} L${x + 44},${yB} L${x + 50},${y0} Z" class="face pad"/>`; }
+      ex += exG(u, x, yB, 'low', -66);
+      if (spots.length < line.length) { const tx = x + 66 + 14 * sc; spots.push(tx); cursor = tx + 39 * sc; } else cursor = x + 50;
+    } else {
+      x = Math.max(toe + 52, cursor + 50);
+      ex += exG(u, x, y0, 'dump', 17);
+      if (spots.length < line.length) { const tx = x + 72 + 14 * sc; spots.push(tx); cursor = tx + 39 * sc; } else cursor = x + 50;
+    }
+  });
+  if (!units.length) { const xA = toe + 52; ex = `<g class="hot slot" data-pop="add-loader" tabindex="0" role="button" aria-label="Add an excavator" transform="translate(${xA},${y0})"><rect x="-42" y="-70" width="84" height="70" rx="10"/><text x="0" y="-30" text-anchor="middle">+ Excavator</text></g>`; cursor = xA + 50; }
+  if (units.length > 2) ex += `<text class="lbl-sm" x="${toe + 52}" y="${y0 + 32}" text-anchor="middle">+ ${units.length - 2} more excavator${units.length > 3 ? 's' : ''} (not drawn)</text>`;
+  const truckAx = spots.length ? spots.at(-1) : cursor;
   // truck positions: loading spots first, then the queue
-  // reading left to right: the bench excavator's truck (if any) comes first, then the floor excavator's
-  const spots = truckBx != null ? [truckBx, truckAx] : [truckAx];
   const qStart = truckAx + 92, slotW = 70;
   const room = W - 24 - slotW - qStart;
   const nQ = Math.max(0, line.length - spots.length);
@@ -194,7 +199,7 @@ function buildScene() {
     <text class="lbl" x="${qStart - 30}" y="30">Truck line · ${N} truck${N === 1 ? '' : 's'}</text>
     <text class="lbl-sm" x="${qStart - 30}" y="48">${esc(lineSummary(st))}</text>
     <text class="lbl-sm" x="${qStart - 30}" y="66">Tap a truck to change it, × to take it out, + to add one.</text>
-    ${ex}${trucks}${slot}`;
+    ${pads}${ex}${trucks}${slot}`;
   buildRoadStrip();
 }
 function lineSummary(st) {
@@ -293,6 +298,7 @@ function renderSummary() {
     <div class="v-stats">
       <div class="v-stat"><span class="lbl">Moved per hour</span><b>${fmtU('rate', R.prod.tph, 0)}</b><small>${fmtU('mass', R.prod.shiftT, 0)} per shift (${hm(api.cond().operatingH)} operating)</small></div>
       <div class="v-stat"><span class="lbl">Volume per hour</span><b>${fmt('vol', R.prod.tph / api.matDerived().bank, 0)} ${api.bcU()}</b><small>dug · ${fmt('vol', R.prod.tph / api.matDerived().loose, 0)} ${api.lcU()} at the dump</small></div>
+      ${targetCard()}
       <div class="v-stat"><span class="lbl">Per year</span><b>${fmt('mass', R.prod.yearT / 1e6, 2)} M ${unit('mass')}</b><small>${st.ops.daysPerYear} days, ${st.ops.shiftsPerDay} shifts/day</small></div>
       <div class="v-stat"><span class="lbl">Slowest link</span><b>${/^loaders/.test(R.prod.bottleneck) ? 'Excavator' : 'Trucks'}</b><small>${/^loaders/.test(R.prod.bottleneck) ? 'trucks queue at the excavator' : 'the excavator waits for trucks'}</small></div>
       <div class="v-stat"><span class="lbl">Fuel</span><b>${fmt('fuelpm', R.fuel.lPerT, 2)} ${unit('fuelpm')}</b><small>${fmt('co2pm', R.fuel.co2KgPerT, 2)} ${unit('co2pm')} CO₂</small></div>
@@ -333,12 +339,15 @@ function renderPop() {
     body.innerHTML = `
       <h4>Model</h4><div class="mcards">${LOADERS.map(x => modelCard(x, x.id === l.modelId, 'loader')).join('')}</div>
       ${stepper(`loaders.${i}.count`, +l.count || 0, 'How many of these excavators')}
+      <h4>Where it stands</h4><div class="seg">${SETUPS.map(x => `<button class="${x.id === (l.setup || 'bench') ? 'sel' : ''}" data-setup="${i}:${x.id}">${esc(x.name)}</button>`).join('')}</div>
+      ${(l.setup || 'bench') === 'bench' ? `<label>Bench height <span class="u">(${unit('len')}, about the truck rail height, not more than the stick length)</span><input type="number" step="0.5" min="0" data-bind="loaders.${i}.benchHeightM" data-q="len"></label>` : ''}
+      <p class="note" id="pop-live">${setupNote(i)}</p>
       <div class="grid g2">
         <label>Bucket<select data-bind="loaders.${i}.bucketId">${m.buckets.map(b => `<option value="${b.id}" ${b.id === l.bucketId ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
         <label>Digging conditions<select data-bind="loaders.${i}.jobCond">${JOB_CONDITIONS.map(x => `<option value="${x.id}" ${x.id === l.jobCond ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
         <label>Machine condition<select data-bind="loaders.${i}.conditionId">${CONDITIONS.map(x => `<option value="${x.id}" ${x.id === l.conditionId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
         <label>Availability <span class="u">% (blank = from condition)</span><input type="number" step="1" min="0" max="100" data-bind="loaders.${i}.availabilityPct" placeholder="${pct(byId(CONDITIONS, l.conditionId).availability)}"></label>
-        <label>Swing angle to truck <span class="u">°</span><input type="number" step="5" data-bind="loaders.${i}.swingDeg"></label>
+        <label>Swing angle to truck <span class="u">° (blank = typical for the setup)</span><input type="number" step="5" data-bind="loaders.${i}.swingDeg" placeholder="${(SETUPS.find(x => x.id === (l.setup || 'bench')) || { swingDeg: 90 }).swingDeg}"></label>
       </div>
       <p class="note">Machine condition sets the availability (worse condition → more breakdowns and repair time), plus a power factor and a slower cycle. Type an availability to override it.</p>
       ${slider(`loaders.${i}.fillOverride`, l.fillOverride === '' ? '' : +l.fillOverride, st.material.fill, 50, 120, 'Bucket fill factor', `How full each bucket really is compared with its rated (heaped) size. Typical for ${esc(byId(MATERIALS, st.materialId)?.name || 'this material')}: ${pct(st.material.fill)} %. Sticky or blocky material fills less; loose, moist soil can fill over 100 %.`)}
@@ -372,11 +381,16 @@ function renderPop() {
     body.innerHTML = `
       <div class="seg">${MATERIALS.map(x => `<button class="${x.id === st.materialId ? 'sel' : ''}" data-mat="${x.id}">${esc(x.name)}</button>`).join('')}</div>
       <div class="grid g2">
-        <label>${md.isBlast ? 'Density of the blasted muck pile' : 'In-situ density at the dig face'} <span class="u">(${unit('dens')})</span><input type="number" step="0.01" data-bind="material.digTm3" data-q="dens"></label>
+        <label>${md.isBlast ? (byId(MATERIALS, st.materialId)?.rehandle ? 'Density of the stockpile (already blasted and dumped once)' : 'Density of the blasted muck pile') : 'In-situ density at the dig face'} <span class="u">(${unit('dens')})</span><input type="number" step="0.01" data-bind="material.digTm3" data-q="dens"></label>
         <label>Swell from dig face to truck <span class="u">%</span><input type="number" step="1" data-bind="material.swellPct"></label>
         ${md.isBlast ? `<label>Solid rock density before blast <span class="u">(${unit('dens')}, for BCM only)</span><input type="number" step="0.01" data-bind="material.bankTm3" data-q="dens"></label>` : ''}
       </div>
-      <p class="note" id="pop-live">${matNote()}</p>
+      <h4>How much to move</h4>
+      <div class="grid g2">
+        <label>Target volume <span class="u">(${unit('vol')})</span><input type="number" step="1000" min="0" data-bind="target.volume" data-q="vol" placeholder="e.g. 500000"></label>
+        <label>Measured as<select data-bind="target.basis">${[['auto', `Auto (${md.isBlast ? 'LCM for this material' : 'BCM for this material'})`], ['bcm', 'Bank volume dug (BCM)'], ['lcm', 'Loose volume, as at the dump (LCM)']].map(([v, t]) => `<option value="${v}" ${v === ((st.target || {}).basis || 'auto') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      </div>
+      <p class="note" id="pop-live">${matNote()}<br>${api.targetText()}</p>
       ${slider('material.fill', st.material.fill, mat ? mat.fill : 0.9, 50, 120, 'Bucket fill factor (all excavators)', 'How full a bucket gets in this material. An excavator can override this in its own settings.')}
       <label class="check"><input type="checkbox" data-bind="material.frozen"> Frozen or cemented (buckets fill less, digging is slower)</label>
       <p class="note">${mat ? esc(mat.src) : ''}</p>`;
@@ -428,6 +442,18 @@ function renderPop() {
   api.renderBound();
   if (!d.open) { d.showModal(); }
 }
+function setupNote(i) {
+  const st = api.state(), l = st.loaders[i]; if (!l) return '';
+  const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
+  const L = { ...l, digDepthM: b.digDepthM, setup: l.setup || 'bench' };
+  const f = api.setupFactor(L); if (!f.setup) return '';
+  const cyc = R && R.trucks[0] ? R.trucks[0].pairs[R.loaders.findIndex(x => x.modelId === l.modelId)] : null;
+  return `${esc(f.setup.note)} Cycle-time factor <b>×${f.factor.toFixed(2)}</b> (Komatsu: ${f.setup.id === 'bench' ? `digging depth ${(f.ratio * 100).toFixed(0)} % of the ${fmtU('len', b.digDepthM, 2)} maximum → ${esc(f.row.name)}` : 'digging above the tracks → below 40 %'}, ${esc(f.col.name)}), typical swing ${f.setup.swingDeg}°.${f.setup.id === 'bench' && b.stickM && +l.benchHeightM > b.stickM ? ` Note: this bench is higher than the ${b.stickM} m stick, above the CAT guideline (bench ≈ stick length); the cycle factor already accounts for the deeper dig.` : ''}${cyc ? ` Bucket cycle now <b>${cyc.tc.toFixed(1)} s</b>.` : ''}`;
+}
+function targetCard() {
+  const tc = api.targetCalc(); if (!tc.ok) return '';
+  return `<div class="v-stat"><span class="lbl">Target ${fmt('vol', tc.V, 0)} ${api.volU(tc.basis)}</span><b>${tc.workDays.toFixed(1)} days</b><small>working days · finishes ≈ ${tc.finish}</small></div>`;
+}
 function matNote() {
   const st = api.state(), md = api.matDerived(), dd = unit('dens') === 't/m³' ? 2 : 0;
   return `Density in the truck = ${fmt('dens', st.material.digTm3, dd)} ÷ (1 + ${+st.material.swellPct || 0} %) = <b>${fmt('dens', md.loose, dd)} ${unit('dens')}</b>. Each load stops at whichever comes first: the rated payload (weight) or the usable body volume.${md.isBlast ? ' Blasted rock has already swelled in the blast, so swell into the truck is normally 0 %; the solid density is only used to report BCM.' : ''}`;
@@ -440,7 +466,7 @@ function roadNote() {
 function refreshPopLive() {
   const el = document.getElementById('pop-live'); if (!el || !popCtx) return;
   const k = popCtx.split(':')[0];
-  el.innerHTML = k === 'material' ? matNote() : k === 'road' ? roadNote() : k === 'shift' ? api.waterfallHTML(api.waterfall()) : el.innerHTML;
+  el.innerHTML = k === 'loader' ? setupNote(+popCtx.split(':')[1]) : k === 'material' ? matNote() + `<br>${api.targetText()}` : k === 'road' ? roadNote() : k === 'shift' ? api.waterfallHTML(api.waterfall()) : el.innerHTML;
 }
 function openPop(ctx) { popCtx = ctx; renderPop(); }
 function closePop() { popCtx = null; const d = $('#pop'); if (d.open) d.close(); }
@@ -484,6 +510,8 @@ function wire() {
     if (rs) { api.setPath(rs.dataset.reset, ''); afterChange(true); return; }
     const mat = e.target.closest('[data-mat]');
     if (mat) { api.setMaterial(mat.dataset.mat); afterChange(true); return; }
+    const su = e.target.closest('[data-setup]');
+    if (su) { const [i, id] = su.dataset.setup.split(':'); const l = api.state().loaders[+i]; l.setup = id; if (id === 'bench' && !(+l.benchHeightM > 0)) l.benchHeightM = 4.5; afterChange(true); return; }
     const wx = e.target.closest('[data-sky]');
     if (wx) { const st = api.state(), sk = byId(SKY, wx.dataset.sky); st.site.skyId = sk.id; if (sk.surface) st.site.surfaceId = sk.surface; afterChange(true); return; }
     if (e.target.closest('[data-ped]')) { closePop(); api.editProfile(); return; }

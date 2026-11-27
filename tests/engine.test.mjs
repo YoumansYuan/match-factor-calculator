@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { matchFactor, passCount, steadySpeed, computeScenario, buildSegments, interp, matchPair } from '../js/engine.js';
 import { TRUCKS, LOADERS, MATERIALS, looseOf } from '../js/data/equipment.js';
 import { solar, darkHours, waterTruckStatus, siteConditions, clockToH } from '../js/conditions.js';
-import { resolveRoad } from '../js/engine.js';
+import { resolveRoad, setupFactor, loaderCycleS } from '../js/engine.js';
 
 let fails = 0;
 const near = (name, got, exp, tol) => {
@@ -117,6 +117,19 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
   const ded = resolveRoad({ roadId: 'firm', surfaceId: 'loosesnow', gradingId: 'dedicated' });
   if (!(ded.rr < none.rr && ded.mu > none.mu)) { fails++; console.log(`FAIL  grader should lower RR and raise traction (none ${none.rr}/${none.mu}, dedicated ${ded.rr}/${ded.mu})`); }
   else console.log(`PASS  grader: no grader RR ${none.rr.toFixed(2)} % μ ${none.mu.toFixed(2)} → dedicated RR ${ded.rr.toFixed(2)} % μ ${ded.mu.toFixed(2)}`);
+}
+
+// Digging face setup (Komatsu 15A-10 conversion factor) — 390F L GP 3.4 m stick, max dig depth 8.68 m, condition C 32 s
+{
+  const m390 = LOADERS.find(x => x.id === 'cat390fl');
+  const base = { jobCond: 'C', conditionId: 'new', digDepthM: 8.68, stickM: 3.4 };
+  near('bench 4.5 m → 52 % → factor 1.0', setupFactor({ ...base, setup: 'bench', benchHeightM: 4.5 }).factor, 1.0, 0);
+  near('bench 3.0 m → 35 % → factor 0.9', setupFactor({ ...base, setup: 'bench', benchHeightM: 3.0 }).factor, 0.9, 0);
+  near('floor → factor 1.1', setupFactor({ ...base, setup: 'floor' }).factor, 1.1, 0);
+  near('no setup → factor 1 (old inputs unchanged)', setupFactor(base).factor, 1, 0);
+  const ops = { frozenCycleMult: 1.1 };
+  near('bench cycle (swing 60°) = 32 s', loaderCycleS({ ...base, setup: 'bench', benchHeightM: 4.5 }, m390, ops, false), 32, 1e-9);
+  near('floor cycle (swing 110°) = (32 + 2) × 1.1', loaderCycleS({ ...base, setup: 'floor' }, m390, ops, false), 37.4, 1e-9);
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');

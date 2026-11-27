@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271723';
-import { unit, fmt, fmtU, toDisp } from './units.js?v=202611271723';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271841';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611271841';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
@@ -49,6 +49,10 @@ export function renderEquipment(el) {
   h += `<h3>Grader maintenance</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Grading</th><th>Share of surface penalty left</th><th>Extra RR</th><th style="text-align:left">Basis</th></tr></thead><tbody>${GRADING.map(g => `<tr><td>${esc(g.name)}</td><td>${(g.keep * 100).toFixed(0)} %</td><td>+${g.rrExtra} %</td><td style="text-align:left;white-space:normal">${esc(g.note)}</td></tr>`).join('')}</tbody></table><p class="note">${est} Planning estimates.</p></div>`;
   h += `<h3>Weather (visibility)</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Weather</th><th>Speed cap</th><th>Efficiency factor</th><th>Suggested road surface</th><th style="text-align:left">Note</th></tr></thead><tbody>${SKY.map(w => `<tr><td>${esc(w.name)}</td><td>${w.capKmh ? fmtU('speed', w.capKmh, 0) : '—'}</td><td>${w.eff}</td><td>${esc(SURFACES.find(x => x.id === w.surface)?.name || 'unchanged')}</td><td style="text-align:left;white-space:normal">${esc(w.note)}</td></tr>`).join('')}</tbody></table><p class="note">${est} ${esc(VIS_SRC)}</p></div>`;
   h += `<h3>Monthly mean air temperature (default)</h3><div class="equip-card"><table class="tbl"><thead><tr>${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => `<th>${m}</th>`).join('')}</tr></thead><tbody><tr>${MONTHLY_TEMP_C.map(t => `<td>${fmt('temp', t, 0)}</td>`).join('')}</tr></tbody></table><p class="note">${est} Approximate Elk Valley (Sparwood, BC) climate normals in ${unit('temp')}; used only when no temperature is typed.</p></div>`;
+  h += `<h3>Digging face setup (excavator cycle-time factor)</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Digging depth / max digging depth</th>${KOM_CYCLE_FACTOR.cols.map(c => `<th>${esc(c.name)}</th>`).join('')}</tr></thead><tbody>${KOM_CYCLE_FACTOR.rows.map(r => `<tr><td>${esc(r.name)}</td>${KOM_CYCLE_FACTOR.f[r.id].map(v => `<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <p class="note">${esc(KOM_CYCLE_FACTOR.src)} Base cycle times (CAT job condition C) correspond to the 1.0 cell.</p>
+    <table class="tbl"><thead><tr><th>Setup</th><th>Digging depth used</th><th>Dumping condition</th><th>Typical swing</th><th style="text-align:left">Basis</th></tr></thead><tbody>${SETUPS.map(x => `<tr><td>${esc(x.name)}</td><td>${x.id === 'bench' ? 'bench height ÷ max digging depth' : 'above the tracks → below 40 %'}</td><td>${esc(KOM_CYCLE_FACTOR.cols.find(c => c.id === x.dumpCol).name)}</td><td>${x.swingDeg}°</td><td style="text-align:left;white-space:normal">${esc(x.note)}</td></tr>`).join('')}</tbody></table>
+    <p class="note">${est} The choice of table cell for each setup and the typical swing angles are engineering judgement based on the cited sources; no source gives a single measured bench-vs-floor percentage. Example (390F L, GP 3.4 m stick, max dig depth 8.68 m, CAT condition C 32 s): bench 4.5 m → 52 % → factor 1.0, swing 60° → 32 s; floor → factor 1.1, swing 110° (+2 s) → 37.4 s (≈ 17 % slower).</p></div>`;
   h += `<h3>Machine condition (age &amp; reliability)</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Condition</th><th>Mechanical availability</th><th>Engine power factor</th><th>Loader cycle multiplier</th></tr></thead><tbody>${CONDITIONS.map(c => `<tr><td>${c.name}</td><td>${(c.availability * 100).toFixed(0)} %</td><td>${c.powerFactor}</td><td>${c.cycleMult}</td></tr>`).join('')}</tbody></table><p class="note">${est} Planning presets — replace with your fleet's maintenance records (availability) where available. The power factor scales rimpull (slower climbing for worn engines/drivetrains).</p></div>`;
   h += `<h3>References</h3><ul>${Object.values(SOURCES).map(s => `<li>${esc(s)}</li>`).join('')}</ul>`;
   el.innerHTML = h;
@@ -83,9 +87,13 @@ raw passes = min(nW, nV)       — the governing limit is shown in the results</
 <p>Rounding options: Burt &amp; Caccetta rule of thumb (add the last pass only if the remainder ≥ ⅓ bucket), always round up, round down, or fractional. The carried load is capped at the usable body volume (excess spills). The <b>bucket fill factor</b> (per material, overridable per loading unit) is how full the bucket is compared with its SAE heaped rating; the <b>body fill factor</b> (per truck type) is how much of the truck's SAE 2:1 heaped volume can really be used — lower it for sticky or blocky material, carry-back, or when loads are kept off the tailgate and sideboards to avoid spillage. Pairs outside 3–6 passes, loads over +10 % of rated (CAT 10/10/20 payload policy) and buckets that cannot clear the truck loading height + 0.5 m are flagged. Frozen/cemented material reduces fill factor and slows digging (MIME 333 Ch.2: freezing impairs loading).</p>
 
 <h3>2. Loader cycle and truck loading time</h3>
-<div class="eq">loader cycle tc = [handbook cycle for job condition A–E + swing adjustment] × machine-condition multiplier
-swing adjustment = +1 s per 10° above 90° (Komatsu), −1 s per 10° below 60°
-truck loading time = passes × tc                        (MIME 333, Burt &amp; Caccetta)
+<div class="eq">loader cycle tc = [handbook cycle for job condition A–E + swing adjustment] × setup factor × machine-condition multiplier
+swing adjustment = +1 s per 10° above 90° (Komatsu), −1 s per 10° below 60°;  blank swing = typical for the setup (bench 60°, floor 110°)
+setup factor (Komatsu 15A-10 conversion factor, relative to the 1.0 cell that matches CAT condition C):
+   on a bench above the truck: row = bench height ÷ max digging depth, column "Normal (large dump target)"
+   on the floor, same level as the truck: row "below 40 %" (digging above the tracks), column "Rather difficult (small dump target)"</div>
+<p>Bench loading is the method recommended by CAT, Terex O&amp;K and Komatsu: the bucket is lifted less, the operator sees into the body and the swing is short. Komatsu (3A-131) notes that working on the same floor as the truck "requires a larger swing angle, cycle time is longer" and uses more fuel because of the higher lift; Litvin &amp; Litvin (2020) found the highest productivity with the truck below the excavator. Bench height should be about the truck rail height and not more than the stick length (CAT; Terex O&amp;K) — the tool flags a bench higher than the stick (no extra penalty: the deeper dig is already in the Komatsu factor). On a bench the loading-height check adds the bench height to the bucket's maximum loading height.</p>
+<div class="eq">truck loading time = passes × tc                        (MIME 333, Burt &amp; Caccetta)
                 or (passes − 1) × tc + first-pass time   (Komatsu Handbook 15A-14)</div>
 
 <h3>3. Haul and return travel</h3>
@@ -128,6 +136,9 @@ truck capacity  = Σ trucks_i × availability_i × load_i / cycle_i × bunching 
 loader capacity = Σ_j (loaders_j × availability_j / lt_j) × Σ_i trucks_i × availability_i × load_i
 production (t/operating h) = min(truck capacity, loader capacity) × job efficiency × utilization × condition
 per shift = production × operating time;  per year = × shifts per day × days per year
+target: tonnes = target volume × (bank density if BCM, loose density if LCM);  working days = tonnes / (production per day)
+   blasted rock and rehandle default to LCM (muck pile / stockpile volume at 2.3 t/m³), other materials to BCM;
+   calendar days = working days × 365 / working days per year, counted from the work date
 trucks for MF = 1 ≈ trucks / MF;   trucks to deploy = that / mean availability   (MIME 333: required fleet = theoretical / availability)</div>
 <p><b>Date and location.</b> The work date sets a default air temperature (approximate monthly mean, editable) and the sunrise/sunset times at the site latitude/longitude (NOAA approximation, Mountain Time with daylight saving). The dark fraction is the share of all shift hours outside daylight. <b>Water truck rule:</b> mean temperature &gt; 3 °C — available; 0–3 °C — daytime only (half effect, night frost risk); ≤ 0 °C — not available (water freezes on the road). A dry road with no effective water truck raises dust: heavy dust reduces efficiency and caps haul speed; frozen ground raises about half as much dust. Rain or snow removes dust.</p>
 <h3>7. Fuel and CO₂</h3>

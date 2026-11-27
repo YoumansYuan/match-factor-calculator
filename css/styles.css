@@ -200,6 +200,8 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
 #scene .hot { cursor: pointer; outline: none; }
 #scene .hot.ex:hover .ex-root, #scene .hot.ex:focus-visible .ex-root, #scene .hot.truck:hover .tr-inner { filter: drop-shadow(0 0 4px var(--accent)); }
 #scene .face:hover, #scene .face:focus-visible { stroke: var(--accent); stroke-width: 2.5; }
+#scene .face.pad { fill: var(--ground); stroke: var(--ground-line); }
+#scene .face.pad:hover { stroke: var(--ground-line); stroke-width: 1; }
 #scene .road-hit:hover, #scene .road-hit:focus-visible { stroke: var(--accent); stroke-opacity: .18; }
 #scene .tw { fill: #23262b; } #scene .th { fill: #7d838c; }
 #scene .tc, .mc-ico .tc { fill: var(--ink-2); }
@@ -257,7 +259,7 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
 .v-sug p { margin: 0 0 8px; }
 @media (max-width: 860px) { .verdict { grid-template-columns: auto minmax(0, 1fr); } .v-sug { grid-column: 1 / -1; } }
 @media (max-width: 480px) { .verdict { grid-template-columns: 1fr; } .v-mf { align-items: flex-start; } }
-.v-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.v-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .v-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .v-stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .v-stat b { font-size: 22px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }

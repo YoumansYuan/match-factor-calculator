@@ -7,7 +7,7 @@
 //   × job efficiency (small operational delays only)
 //   × condition factor (weather visibility × dust × darkness)
 // Speed caps from visibility are applied to the haul itself, not as an efficiency.
-import { SKY, SURFACES, MONTHLY_TEMP_C } from './data/equipment.js?v=202611271723';
+import { SKY, SURFACES, MONTHLY_TEMP_C } from './data/equipment.js?v=202611271841';
 
 const rad = d => d * Math.PI / 180;
 const byId = (list, id) => list.find(x => x.id === id);

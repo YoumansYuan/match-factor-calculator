@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611271723">
+  <link rel="stylesheet" href="css/styles.css?v=202611271841">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -119,6 +119,9 @@
           <div class="resolved span2" id="material-derived"></div>
           <label class="check span3"><input type="checkbox" data-bind="material.frozen"> Frozen / cemented material <small>(fill factor × <span data-show="ops.frozenFillMult"></span>, dig cycle × <span data-show="ops.frozenCycleMult"></span>)</small></label>
           <p class="note span4" id="material-note"></p>
+          <label class="span2">Target volume to move <span class="u" data-u="vol"></span><input type="number" data-bind="target.volume" data-q="vol" step="1000" min="0" placeholder="e.g. 500000"></label>
+          <label class="span2">Target measured as<select data-bind="target.basis" id="sel-target-basis"></select></label>
+          <div class="resolved span4" id="target-derived"></div>
         </div>
       </details>
 
@@ -275,6 +278,6 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611271723"></script>
+<script type="module" src="js/app.js?v=202611271841"></script>
 </body>
 </html>
