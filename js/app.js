@@ -1,10 +1,10 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271959';
-import { siteConditions, hToClock } from './conditions.js?v=202611271959';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611271959';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611271959';
-import { renderEquipment, renderMethod } from './docs.js?v=202611271959';
-import { initVisual, updateVisual } from './visual.js?v=202611271959';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611271959';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272100';
+import { siteConditions, hToClock } from './conditions.js?v=202611272100';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272100';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272100';
+import { renderEquipment, renderMethod } from './docs.js?v=202611272100';
+import { initVisual, updateVisual } from './visual.js?v=202611272100';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272100';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {

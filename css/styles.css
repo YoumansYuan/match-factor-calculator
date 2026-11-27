@@ -349,6 +349,13 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
 .ped-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
 .ped-bar label:not(.btn) { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); }
 .ped-bar input[type=number] { width: 120px; }
+.ped-base { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.ped-base input[type=number] { width: 140px; }
+.ped-plot { position: relative; }
+.ped-plot svg { display: block; width: 100%; height: auto; }
+.ped-tip { position: absolute; pointer-events: none; z-index: 2; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 6px 9px; font-size: 12px; line-height: 1.45; white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-variant-numeric: tabular-nums; }
+.ped-tip b { font-weight: 600; }
+.ped-tip .bad { color: #ff8a80; font-weight: 600; }
 .ped-bgctl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
 .ped-help { margin: 0; font-size: 12px; }
 .ped-help kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
@@ -389,3 +396,4 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
 .wf-v { text-align: right; font-variant-numeric: tabular-nums; }
 .wf .note { margin: 4px 0 0; font-size: 12px; }
 .wf-h { font-size: 13px; margin: 16px 0 4px; }
+.ped-bgctl[hidden] { display: none; }

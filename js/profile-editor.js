@@ -1,8 +1,11 @@
 // Haul-profile editor: draw the elevation profile by hand (or trace it over a screenshot).
 // Left end = loading point, right end = dump. Points are stored in metres (SI) in state.profile.points.
-import { unit, toDisp, toSI, fmt } from './units.js?v=202611271959';
+import { unit, toDisp, toSI, fmt } from './units.js?v=202611272100';
 
 let api = null, pts = [], sel = -1, drag = -1, bg = null, bgOpacity = 0.45;
+// drag state: where the pointer went down, the point's start position, and whether it has moved past the dead zone
+let dragStart = null;
+const DEAD_PX = 4; // ignore jitter below this many screen pixels
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const W = 820, H = 420, PL = 64, PR = 18, PT = 18, PB = 40;
@@ -46,7 +49,7 @@ const iy = (py, v) => v.yMin + (H - PB - py) / (H - PT - PB) * (v.yMax - v.yMin)
 const maxGrade = () => +(api.state().profile.maxGradePct ?? 10) || 10;
 
 // ------------------------------------------------------------------ render
-function render() { renderSvg(); renderTable(); renderSide(); }
+function render() { renderSvg(); renderTable(); renderSide(); renderBase(); renderTip(); }
 function renderSvg() {
   const v = view(), svg = $('#ped-svg');
   // axes in display units, positions in SI
@@ -75,6 +78,32 @@ function renderSvg() {
     <text x="${sx(pts[0][0], v) + 8}" y="${sy(pts[0][1], v) + 20}" class="ptag">Load</text>
     <text x="${sx(pts.at(-1)[0], v) - 8}" y="${sy(pts.at(-1)[1], v) + 20}" text-anchor="end" class="ptag">Dump</text>`;
 }
+// Base line inputs: start (loading) elevation, dump elevation, haul distance
+function renderBase() {
+  const set = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = +toDisp('len', v).toFixed(1); };
+  set('#ped-z0', pts[0][1]); set('#ped-z1', pts.at(-1)[1]); set('#ped-L', pts.at(-1)[0]);
+}
+// Floating readout next to the selected / dragged point
+function renderTip() {
+  const tip = $('#ped-tip');
+  if (sel < 0 || !pts[sel]) { tip.hidden = true; return; }
+  const v = view(), p = pts[sel], prev = pts[sel - 1];
+  const L = x => `${fmt('len', x, 0)} ${unit('len')}`;
+  const g = prev ? (p[1] - prev[1]) / Math.max(0.01, p[0] - prev[0]) * 100 : null;
+  const bad = g != null && Math.abs(g) > maxGrade();
+  tip.innerHTML = `<b>${sel === 0 ? 'Loading point' : sel === pts.length - 1 ? 'Dump point' : `Point ${sel}`}</b><br>
+    Elevation <b>${fmt('len', p[1], 1)} ${unit('len')}</b><br>
+    From loading point <b>${L(p[0])}</b>${prev ? `<br>From previous point <b>${L(p[0] - prev[0])}</b><br>Grade from previous <b class="${bad ? 'bad' : ''}">${g >= 0 ? '+' : ''}${g.toFixed(1)} %</b>` : ''}`;
+  tip.hidden = false;
+  // position in CSS pixels relative to the plot box, flipped to stay inside it
+  const svg = $('#ped-svg'), box = svg.getBoundingClientRect(), k = box.width / W;
+  const px = sx(p[0], v) * k, py = sy(p[1], v) * k;
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let left = px + 14, top = py - th - 12;
+  if (left + tw > box.width - 4) left = px - tw - 14;
+  if (top < 4) top = py + 14;
+  tip.style.left = `${Math.max(4, left)}px`; tip.style.top = `${Math.max(4, top)}px`;
+}
 const fmtNum = x => (Math.abs(x) >= 100 ? Math.round(x).toLocaleString('en-US') : (+x.toFixed(1)).toString());
 
 function renderTable() {
@@ -82,10 +111,10 @@ function renderTable() {
   $('#ped-rows').innerHTML = pts.map((p, i) => {
     const g = i < pts.length - 1 ? (pts[i + 1][1] - p[1]) / Math.max(0.01, pts[i + 1][0] - p[0]) * 100 : null;
     return `<tr class="${i === sel ? 'sel' : ''}" data-row="${i}"><td>${i === 0 ? 'Load' : i === pts.length - 1 ? 'Dump' : i}</td>
-      <td><input type="number" step="10" data-pt="${i}" data-k="0" value="${+toDisp('len', p[0]).toFixed(1)}" ${i === 0 ? 'disabled' : ''}></td>
+      <td><input type="number" step="10" data-pt="${i}" data-k="0" value="${+toDisp('len', p[0]).toFixed(1)}" ${i === 0 || i === pts.length - 1 ? 'disabled title="Change the haul distance above"' : ''}></td>
       <td><input type="number" step="1" data-pt="${i}" data-k="1" value="${+toDisp('len', p[1]).toFixed(1)}"></td>
       <td class="${g != null && Math.abs(g) > mg ? 'bad' : ''}">${g == null ? '' : `${g >= 0 ? '+' : ''}${g.toFixed(1)} %`}</td>
-      <td>${pts.length > 2 ? `<button class="x-sm" data-del="${i}" aria-label="Delete point">×</button>` : ''}</td></tr>`;
+      <td>${i > 0 && i < pts.length - 1 ? `<button class="x-sm" data-del="${i}" aria-label="Delete point">×</button>` : ''}</td></tr>`;
   }).join('');
   $('#ped-unit-d').textContent = unit('len'); $('#ped-unit-z').textContent = unit('len');
 }
@@ -108,22 +137,32 @@ function svgPoint(e) {
   const svg = $('#ped-svg'), r = svg.getBoundingClientRect();
   return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H];
 }
+// snap to whole display units (1 m or 1 ft) along the road and 0.1 in elevation
 const snapX = x => Math.round(toDisp('len', x)) / (toDisp('len', 1) || 1);
 const snapZ = z => Math.round(toDisp('len', z) * 10) / 10 / (toDisp('len', 1) || 1);
-function moveTo(i, px, py) {
-  const v = view();
-  let x = snapX(ix(px, v)), z = snapZ(iy(py, v));
+// Set point i to (x, z) in metres. Loading and dump points keep their distance (elevation only);
+// middle points stay between their neighbours.
+function placePoint(i, x, z) {
   if (i === 0) x = 0;
-  else {
-    const lo = pts[i - 1][0] + 1, hi = i < pts.length - 1 ? pts[i + 1][0] - 1 : Infinity;
-    x = clamp(x, lo, hi);
-  }
+  else if (i === pts.length - 1) x = pts[i][0];
+  else x = clamp(x, pts[i - 1][0] + 1, pts[i + 1][0] - 1);
   pts[i] = [x, z];
+}
+// Drag: move by the pointer's offset from where it went down (no jump to the cursor), with a small dead zone
+// and an optional Shift axis lock (whichever direction the pointer moved most).
+function dragTo(e) {
+  const [px, py] = svgPoint(e), d = dragStart, v = view();
+  let dx = px - d.px, dy = py - d.py;
+  if (!d.moved) { if (Math.hypot(dx, dy) * ($('#ped-svg').getBoundingClientRect().width / W) < DEAD_PX) return false; d.moved = true; }
+  if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+  const x = snapX(d.x + dx / (W - PL - PR) * v.xMax), z = snapZ(d.z - dy / (H - PT - PB) * (v.yMax - v.yMin));
+  placePoint(drag, x, z);
+  return true;
 }
 function insertAt(px, py) {
   const v = view();
   const x = snapX(ix(px, v)), z = snapZ(iy(py, v));
-  if (x <= 0) return;
+  if (x <= 0 || x >= pts.at(-1)[0]) return;
   let k = pts.findIndex(p => p[0] > x);
   if (k === -1) { pts.push([x, z]); sel = pts.length - 1; } else { if (pts[k - 1] && Math.abs(pts[k - 1][0] - x) < 1) return; pts.splice(k, 0, [x, z]); sel = k; }
 }
@@ -141,20 +180,40 @@ function simplify(points, tol) {
   return [...simplify(points.slice(0, idx + 1), tol).slice(0, -1), ...simplify(points.slice(idx), tol)];
 }
 
+let nudgeT = 0;
+// Two-click confirm (no browser dialog): the first click arms the button for 3 s
+let armed = 0;
+function confirmNew() {
+  const b = $('#ped-new');
+  if (Date.now() - armed < 3000) { armed = 0; b.textContent = 'New straight base line'; return true; }
+  armed = Date.now(); b.textContent = 'Click again to replace all points';
+  setTimeout(() => { if (armed && Date.now() - armed >= 2900) { armed = 0; b.textContent = 'New straight base line'; } }, 3000);
+  return false;
+}
 function wire() {
   const svg = $('#ped-svg');
   svg.addEventListener('pointerdown', e => {
     const dot = e.target.closest('.pdot');
-    if (dot) { drag = sel = +dot.dataset.i; svg.setPointerCapture(e.pointerId); render(); e.preventDefault(); return; }
-    if (e.target.closest('.phit')) { const [px, py] = svgPoint(e); insertAt(px, py); drag = sel; if (drag >= 0) svg.setPointerCapture(e.pointerId); render(); e.preventDefault(); return; }
+    const begin = i => { const [px, py] = svgPoint(e); drag = sel = i; dragStart = { px, py, x: pts[i][0], z: pts[i][1], moved: false }; svg.setPointerCapture(e.pointerId); };
+    if (dot) { begin(+dot.dataset.i); render(); e.preventDefault(); return; }
+    if (e.target.closest('.phit')) { const [px, py] = svgPoint(e); const n = pts.length; insertAt(px, py); if (pts.length > n) begin(sel); render(); if (pts.length > n) commit(); e.preventDefault(); return; }
     sel = -1; render();
   });
-  svg.addEventListener('pointermove', e => { if (drag < 0) return; const [px, py] = svgPoint(e); moveTo(drag, px, py); renderSvg(); renderSide(); });
-  const end = () => { if (drag < 0) return; drag = -1; renderTable(); commit(); };
+  svg.addEventListener('pointermove', e => { if (drag < 0) return; if (dragTo(e)) { renderSvg(); renderSide(); renderBase(); renderTip(); } });
+  const end = () => { if (drag < 0) return; const moved = dragStart && dragStart.moved; drag = -1; dragStart = null; renderTable(); if (moved) commit(); };
   svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
   document.addEventListener('keydown', e => {
     if (!$('#ped').open) return;
-    if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0 && !(e.target.matches && e.target.matches('input'))) { e.preventDefault(); del(sel); render(); commit(); }
+    const inInput = e.target.matches && e.target.matches('input, select, textarea');
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sel > 0 && sel < pts.length - 1 && !inInput) { e.preventDefault(); del(sel); render(); commit(); return; }
+    // arrow keys nudge the selected point: 0.1 elevation / 1 distance (display units), Shift = ×10
+    const arrows = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    if (arrows[e.key] && sel >= 0 && !inInput) {
+      e.preventDefault();
+      const m = e.shiftKey ? 10 : 1, u = 1 / (toDisp('len', 1) || 1), [ax, az] = arrows[e.key];
+      placePoint(sel, snapX(pts[sel][0] + ax * m * u), snapZ(pts[sel][1] + az * 0.1 * m * u));
+      render(); clearTimeout(nudgeT); nudgeT = setTimeout(commit, 250);
+    }
   });
   $('#ped-rows').addEventListener('change', e => {
     const el = e.target; if (!el.dataset.pt) return;
@@ -167,8 +226,21 @@ function wire() {
     const d = e.target.closest('[data-del]'); if (d) { del(+d.dataset.del); render(); commit(); return; }
     const r = e.target.closest('[data-row]'); if (r && !e.target.matches('input')) { sel = +r.dataset.row; render(); }
   });
-  $('#ped-add').onclick = () => { const l = pts.at(-1); pts.push([l[0] + 200, l[1]]); sel = pts.length - 1; render(); commit(); };
-  $('#ped-new').onclick = () => { const z = pts[0][1]; pts = [[0, z], [1000, z]]; sel = -1; api.state().profile.view = {}; render(); commit(); };
+  // base line: start / dump elevation move the end points; a new distance stretches the road (keeps its shape)
+  const baseVal = id => { const v = toSI('len', +$(id).value); return $(id).value !== '' && isFinite(v) ? v : null; };
+  $('#ped-z0').addEventListener('change', () => { const z = baseVal('#ped-z0'); if (z == null) return; pts[0][1] = z; render(); commit(); });
+  $('#ped-z1').addEventListener('change', () => { const z = baseVal('#ped-z1'); if (z == null) return; pts.at(-1)[1] = z; render(); commit(); });
+  $('#ped-L').addEventListener('change', () => {
+    const L = baseVal('#ped-L'), L0 = pts.at(-1)[0]; if (L == null || L < 10 || !L0) return;
+    pts = pts.map(p => [snapX(p[0] * L / L0), p[1]]);
+    const st = api.state(); if (st.profile.view) st.profile.view.xMax = '';
+    render(); commit();
+  });
+  $('#ped-new').onclick = () => {
+    const z0 = baseVal('#ped-z0') ?? pts[0][1], z1 = baseVal('#ped-z1') ?? pts.at(-1)[1], L = baseVal('#ped-L') ?? pts.at(-1)[0];
+    if (pts.length > 2 && !confirmNew()) return;
+    pts = [[0, z0], [Math.max(10, L), z1]]; sel = -1; api.state().profile.view = {}; render(); commit();
+  };
   $('#ped-simplify').onclick = () => { pts = simplify(pts, 1.0); sel = -1; render(); commit(); };
   $('#ped-flip').onclick = () => { const L = pts.at(-1)[0]; pts = pts.map(p => [L - p[0], p[1]]).reverse(); sel = -1; render(); commit(); };
   ['xMax', 'yMin', 'yMax'].forEach(k => { $(`#ped-${k}`).addEventListener('change', e => { const st = api.state(); st.profile.view = st.profile.view || {}; st.profile.view[k] = e.target.value === '' ? '' : toSI('len', +e.target.value); render(); api.schedule(); }); });
@@ -185,6 +257,7 @@ function wire() {
     const txt = `distance_${unit('len')},elevation_${unit('len')}\n` + pts.map(p => `${+toDisp('len', p[0]).toFixed(2)},${+toDisp('len', p[1]).toFixed(2)}`).join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv' })); a.download = 'haul-profile.csv'; document.body.appendChild(a); a.click(); a.remove();
   };
+  window.addEventListener('resize', () => { if ($('#ped').open) renderTip(); });
   $('#ped-close').onclick = () => $('#ped').close();
   $('#ped-done').onclick = () => $('#ped').close();
 }

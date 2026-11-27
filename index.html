@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611271959">
+  <link rel="stylesheet" href="css/styles.css?v=202611272100">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -56,19 +56,23 @@
   <div class="pop-head"><h3 id="ped-title">Haul road profile — draw or edit</h3><button id="ped-close" class="x" aria-label="Close">×</button></div>
   <div class="ped">
     <div class="ped-main">
+      <div class="ped-bar ped-base">
+        <label>Start elevation (loading) <span class="u" data-u="len"></span><input type="number" id="ped-z0" step="1"></label>
+        <label>Dump elevation <span class="u" data-u="len"></span><input type="number" id="ped-z1" step="1"></label>
+        <label>Haul distance <span class="u" data-u="len"></span><input type="number" id="ped-L" step="10" min="10"></label>
+        <button class="btn ghost" id="ped-new" title="Replace the profile with a straight line from the start to the dump">New straight base line</button>
+      </div>
       <div class="ped-bar">
         <label>Distance max <span id="ped-unit-x" class="u" data-u="len"></span><input type="number" id="ped-xMax" step="100" min="10"></label>
         <label>Elevation min<input type="number" id="ped-yMin" step="10"></label>
         <label>Elevation max<input type="number" id="ped-yMax" step="10"></label>
         <label>Warn above grade %<input type="number" id="ped-maxg" step="0.5" min="1"></label>
       </div>
-      <svg id="ped-svg" viewBox="0 0 820 420" role="application" aria-label="Elevation profile editor: drag points, click the line to add a point"></svg>
-      <p class="note ped-help">Left end = <b>loading point</b>, right end = <b>dump</b>. Drag a point up/down (or sideways) · click the line to add a point · select a point and press <kbd>Delete</kbd> to remove it · leave axis boxes empty for auto range. Grades steeper than the warning limit are shown in red.</p>
+      <div class="ped-plot"><svg id="ped-svg" viewBox="0 0 820 420" role="application" aria-label="Elevation profile editor: drag points, click the line to add a point"></svg><div id="ped-tip" class="ped-tip" hidden></div></div>
+      <p class="note ped-help">Set the start elevation, dump elevation and haul distance first, then click the line to add points and shape the real road. The loading and dump points move up/down only (change the haul distance in the box above). Drag a point · hold <kbd>Shift</kbd> to move it straight up/down or sideways · arrow keys nudge the selected point (<kbd>Shift</kbd> = ×10) · <kbd>Delete</kbd> removes it. Grades steeper than the warning limit are shown in red.</p>
       <div class="ped-bar">
-        <button class="btn" id="ped-add">+ Extend road (add point at end)</button>
         <button class="btn ghost" id="ped-simplify" hidden>Simplify (fewer points)</button>
         <button class="btn ghost" id="ped-flip">Flip direction</button>
-        <button class="btn ghost" id="ped-new">Start new (flat 2 points)</button>
         <label class="btn ghost file">Trace over image…<input type="file" id="ped-bg" accept="image/*"></label>
         <span id="ped-bg-ctl" class="ped-bgctl" hidden>Image opacity <input type="range" id="ped-bg-op" min="10" max="100" value="45"> <button class="link" id="ped-bg-rm">remove image</button></span>
       </div>
@@ -278,6 +282,6 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611271959"></script>
+<script type="module" src="js/app.js?v=202611272100"></script>
 </body>
 </html>
