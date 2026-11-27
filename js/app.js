@@ -1,12 +1,12 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272133';
-import { siteConditions, hToClock } from './conditions.js?v=202611272133';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272133';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272133';
-import { renderEquipment, renderMethod } from './docs.js?v=202611272133';
-import { initVisual, updateVisual } from './visual.js?v=202611272133';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272133';
-import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272133';
-import { CLIMATE } from './data/equipment.js?v=202611272133';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272144';
+import { siteConditions, hToClock } from './conditions.js?v=202611272144';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272144';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272144';
+import { renderEquipment, renderMethod } from './docs.js?v=202611272144';
+import { initVisual, updateVisual } from './visual.js?v=202611272144';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272144';
+import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272144';
+import { CLIMATE } from './data/equipment.js?v=202611272144';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -18,7 +18,7 @@ const DEFAULTS = {
   trucks: [{ modelId: 'cat745', count: 6, conditionId: 'good', availabilityPct: '', payloadKg: '', bodyFillPct: '', spotMin: '', dumpMin: '' }],
   target: { volume: '', basis: 'auto' },
   // seasonal schedule: month-by-month weather from the site climate, from the work date (start) to the end date or the target
-  season: { on: true, end: '', level: 0, climate: {}, fogStopH: 6 },
+  season: { on: true, end: '', level: 0, climate: {}, fogStopH: 6, checkDay: false, checkDate: '' },
   profile: { segmentM: 100, loadAreaM: 50, dumpAreaM: 50, reverse: false, points: null, name: '' },
   ops: { shiftStart: '07:00', shiftEnd: '19:00', shiftsPerDay: 2, daysPerYear: 300, nonProdMin: 60, jobEffMin: 55,
     standby: { faceMin: 20, blastMin: 15, relocMin: 10, fuelMin: 15 }, assumptions: { dustEffLoss: 0.08, dustCapKmh: 40, darkEffLoss: 0.05 }, bunching: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', mfUseAvailability: false,
@@ -57,6 +57,7 @@ function migrate(saved) {
   delete st.site.weatherId; delete st.site.altitudeM;
   if (saved.ops && saved.ops.shiftH != null && !saved.ops.shiftStart) { st.ops.shiftEnd = hToClock(7 + +saved.ops.shiftH + st.ops.nonProdMin / 60); if (+saved.ops.jobEffMin === 50) st.ops.jobEffMin = 55; }
   delete st.ops.shiftH; delete st.ops.utilizationPct;
+  st.season.on = true; // 2026-11-27: weather always comes from the season (one-day check is a separate switch)
   return st;
 }
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -149,11 +150,11 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 function fillSelect(el, list, val, label = x => x.name) { el.innerHTML = list.map(x => `<option value="${x.id}">${esc(label(x))}</option>`).join(''); if (val != null) el.value = val; }
 function initSelects() {
   fillSelect($('#sel-road'), ROADS, state.site.roadId, r => `${r.name} (RR ${r.rr} %, μ ${r.traction})`);
-  fillSelect($('#sel-surface'), SURFACES, state.site.surfaceId);
-  fillSelect($('#sel-sky'), SKY, state.site.skyId);
+  $$('.sel-surface').forEach(el => fillSelect(el, SURFACES, state.site.surfaceId));
+  $$('.sel-sky').forEach(el => fillSelect(el, SKY, state.site.skyId));
   fillSelect($('#sel-grading'), GRADING, state.site.gradingId);
-  fillSelect($('#sel-target-basis'), BASES, (state.target || {}).basis || 'auto');
-  fillSelect($('#sel-material'), MATERIALS, state.materialId);
+  $$('.sel-target-basis').forEach(el => fillSelect(el, BASES, (state.target || {}).basis || 'auto'));
+  $$('.sel-material').forEach(el => fillSelect(el, MATERIALS, state.materialId));
 }
 
 // ------------------------------------------------------------------ binding
@@ -221,15 +222,15 @@ function renderRows() {
 }
 
 // ------------------------------------------------------------------ engine input
-function toEngineInput(siteIn = null) {
+function toEngineInput(siteIn = null, main = !siteIn) {
   const s = state;
   if (!s.site.date) s.site.date = todayISO();
   const c = siteConditions(siteIn || s.site, s.ops);
   const cap = c.capKmh || Infinity;
   const site = { ...(siteIn || s.site), tempC: c.tempC, speedLimitKmh: Math.min(+s.site.speedLimitKmh || Infinity, cap), downhillLimitKmh: Math.min(+s.site.downhillLimitKmh || Infinity, cap) };
   delete site.altitudeM;
-  const ops = { ...s.ops, jobEff: c.jobEff, utilization: c.utilization, truckUtil: c.truckUtil, condFactor: siteIn ? 1 : c.condFactor, shiftH: c.operatingH, shiftsPerDay: c.nShifts };
-  if (!siteIn) { lastCond = c; lastOps = ops; }
+  const ops = { ...s.ops, jobEff: c.jobEff, utilization: c.utilization, truckUtil: c.truckUtil, condFactor: main ? c.condFactor : 1, shiftH: c.operatingH, shiftsPerDay: c.nShifts };
+  if (main) { lastCond = c; lastOps = ops; }
   return {
     site,
     material: { looseTm3: looseOf(s.material), fill: s.material.fill, frozen: s.material.frozen },
@@ -258,8 +259,20 @@ function run() {
   $('#material-note').textContent = mat ? `Source: ${mat.src}` : '';
   if (!state.profile.points) return;
   let input;
-  try { input = toEngineInput(); result = computeScenario(input); } catch (e) { $('#warnings').innerHTML = `<b>Error:</b> ${esc(e.message)}`; console.error(e); return; }
-  seasonResult = seasonCalc(); seasonRangeRes = state.season.on ? [-1, 1].map(L => seasonCalc(L)) : null;
+  try {
+    const se = state.season;
+    if (!state.site.date) state.site.date = todayISO();
+    // one weather day (check mode) or, normally, a dry clear day first; the schedule then picks the reference day
+    input = toEngineInput(se.checkDay ? { ...state.site, date: se.checkDate || state.site.date } : { ...state.site, skyId: 'clear', surfaceId: 'dry', tempC: '' }, true);
+    result = computeScenario(input);
+    seasonResult = seasonCalc(); seasonRangeRes = [-1, 1].map(L => seasonCalc(L));
+    if (!se.checkDay && seasonResult && seasonResult.rows.length) {
+      const ref = dominantDay(seasonResult);
+      result = computeScenario(toEngineInput(ref.site, true));
+      applySeasonAverage(result, seasonResult, ref);
+    }
+  } catch (e) { $('#warnings').innerHTML = `<b>Error:</b> ${esc(e.message)}`; console.error(e); return; }
+  renderProjBar();
   renderSiteDerived();
   renderTags(); renderKPIs(); renderTables(); renderCharts(); renderProfileSummary();
   renderSeason();
@@ -288,6 +301,48 @@ function seasonCalc(level = state.season.level) {
     workFrac: (+state.ops.daysPerYear || 365) / 365, elevM: result.siteAlt, dayTonnes });
   out.level = level; out.tc = tc;
   return out;
+}
+// The most common weather day over the schedule (by working days): cycle times, speeds and match factor are shown for it.
+function dominantDay(sr) {
+  const acc = {}; let total = 0;
+  sr.rows.forEach(r => r.types.forEach(t => {
+    const k = `${t.skyId}|${t.surfaceId}`, w = t.share * r.workDays; total += w;
+    const a = acc[k] || (acc[k] = { w: 0, best: -1, t, row: r });
+    a.w += w; if (w > a.best) { a.best = w; a.t = t; a.row = r; }
+  }));
+  const top = Object.values(acc).sort((a, b) => b.w - a.w)[0], r = top.row;
+  return { site: { ...state.site, skyId: top.t.skyId, surfaceId: top.t.surfaceId, tempC: +r.tempC.toFixed(1), date: `${r.y}-${String(r.m + 1).padStart(2, '0')}-15` },
+    label: top.t.label, month: `${MON[r.m]} ${r.y}`, tempC: r.tempC, share: total > 0 ? top.w / total : 1 };
+}
+// Production figures become the average per working day over the schedule (all day types, all months).
+function applySeasonAverage(r, sr, ref) {
+  const wd = sr.rows.reduce((s, x) => s + x.workDays, 0);
+  if (!(wd > 0) || !(r.prod.dayT > 0)) return;
+  const avg = sr.total / wd, f = avg / r.prod.dayT, last = sr.rows.at(-1);
+  r.prodRef = r.prod;
+  r.prod = { ...r.prod, tph: r.prod.tph * f, shiftT: r.prod.shiftT * f, dayT: avg, yearT: r.prod.yearT * f };
+  const iso = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+  r.season = { f, ref, wd, from: iso(sr.rows[0].y, sr.rows[0].m, sr.rows[0].from), to: sr.finish ? sr.finish.date : iso(last.y, last.m, last.from + last.days - 1) };
+}
+// Text for the weather used: season (with the reference day) or the one checked day
+function weatherLabel(r = result) {
+  if (r && r.season) return `season weather · cycle shown for the most common day: ${r.season.ref.label.toLowerCase()}`;
+  return `one day: ${byId(SKY, state.site.skyId)?.name || ''}, ${(byId(SURFACES, state.site.surfaceId)?.name || '').toLowerCase()} road`;
+}
+function renderProjBar() {
+  const md = matDerived(), st = state, r = result;
+  const m = $('#pb-material'); if (m) m.innerHTML = `<b>${esc(byId(MATERIALS, st.materialId)?.name || 'Material')}</b><small>${fmt('dens', md.loose, 2)} ${unit('dens')} in the truck</small>`;
+  const sh = $('#pb-shift'); if (sh) sh.innerHTML = `<b>Work hours</b><small>${esc(st.ops.shiftStart)}–${esc(st.ops.shiftEnd)} × ${st.ops.shiftsPerDay}/day · ${st.ops.daysPerYear} d/yr</small>`;
+  const day = $('#pb-day'); if (day) day.hidden = !st.season.checkDay;
+  const s = $('#pb-status'); if (!s || !r) return;
+  const lvl = esc(levelLabel(st.season.level));
+  if (r.season) {
+    const x = r.season;
+    s.innerHTML = `<b>${lvl}.</b> Production figures = average per working day from ${x.from} to ${x.to} with the month-by-month weather. Cycle times, speeds and match factor are shown for the most common day: <b>${esc(x.ref.label)}</b> (${x.ref.month}, ${fmt('temp', x.ref.tempC, 0)} ${unit('temp')}, ${(x.ref.share * 100).toFixed(0)} % of working days).`;
+  } else if (st.season.checkDay) {
+    const c = lastCond;
+    s.innerHTML = `<b>Checking one weather day</b> (${esc(st.season.checkDate || st.site.date)}${c ? `, ${fmt('temp', c.tempC, 0)} ${unit('temp')}` : ''}): all results except the target finish date use this day. The target finish date still uses the month-by-month weather (${lvl.toLowerCase()}).`;
+  } else s.innerHTML = lvl;
 }
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // optimistic and cautious ends of the slider (computed once per run)
@@ -373,7 +428,7 @@ function renderKPIs() {
   $('#mf-msg').innerHTML = `<b>${t}</b> — ${m}<br><small>Nominal ${r.mfNominal.toFixed(2)} · on available units ${r.mfAvail.toFixed(2)}</small>`;
   $('#mf-pin').style.left = `${Math.max(0, Math.min(100, (mf - 0.5) * 100))}%`;
   $('#k-tph').textContent = fmtU('rate', r.prod.tph, 0);
-  $('#k-tph-sub').innerHTML = `${fmtU('mass', r.prod.shiftT, 0)} / shift · bottleneck: ${r.prod.bottleneck}`;
+  $('#k-tph-sub').innerHTML = `${r.season ? 'season average · ' : ''}${fmtU('mass', r.prod.shiftT, 0)} / shift · bottleneck: ${r.prod.bottleneck}`;
   $('#k-need').textContent = r.trucksForMF1 ? r.trucksForMF1.toFixed(1) : '—';
   const N = r.trucks.reduce((s, t) => s + t.n, 0);
   $('#k-need-sub').innerHTML = `now ${N} · incl. availability: <b>${Math.ceil(r.trucksForMF1WithAvail || 0)}</b> to deploy`;
@@ -402,7 +457,7 @@ function renderTables() {
   const p = r.prod, md = matDerived(), tgt = targetCalc(r);
   const rise = r.segs.reduce((s, x) => s + Math.max(0, x.z1 - x.z0), 0), fall = r.segs.reduce((s, x) => s + Math.max(0, x.z0 - x.z1), 0);
   const kv = [
-    ['Production (operating)', fmtU('rate', p.tph, 0)], ['Per shift', fmtU('mass', p.shiftT, 0)], ['Per day', fmtU('mass', p.dayT, 0)], ['Per year', fmtU('mass', p.yearT / 1e6, 2).replace(unit('mass'), `M ${unit('mass')}`)],
+    [r.season ? 'Production (season average)' : 'Production (operating)', fmtU('rate', p.tph, 0)], ['Per shift', fmtU('mass', p.shiftT, 0)], ['Per day', fmtU('mass', p.dayT, 0)], ['Per year', fmtU('mass', p.yearT / 1e6, 2).replace(unit('mass'), `M ${unit('mass')}`)],
     ['Bank volume dug', `${fmt('vol', p.tph / md.bank, 0)} ${bcU()}/h`], ['Loose volume at dump', `${fmt('vol', p.tph / md.loose, 0)} ${lcU()}/h`], ['Truck capacity (theoretical)', fmtU('rate', p.truckCapTph, 0)], ['Loader capacity (theoretical)', fmtU('rate', p.loaderCapTph, 0)],
     ['Loader efficiency', `${(p.loaderEff * 100).toFixed(0)} %`], ['Truck efficiency', `${(p.truckEff * 100).toFixed(0)} %`], ['One-way haul', fmtU('len', r.totalHaulM, 0)],
     ['Climb / descent (loaded)', `${fmt('len', rise, 0)} / ${fmt('len', fall, 0)} ${unit('len')}`], ['Rolling resistance · traction', `${r.road.rr.toFixed(1)} % · ${r.road.mu.toFixed(2)}`],
@@ -535,7 +590,11 @@ function wire() {
     const rm = e.target.closest('[data-rm]');
     if (rm) { const [k, i] = rm.dataset.rm.split('.'); state[k].splice(+i, 1); renderRows(); schedule(); }
   });
-  $('#sel-material').addEventListener('change', e => { setMaterial(e.target.value); renderRows(); renderMaterialFields(); schedule(); });
+  document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('sel-material')) { setMaterial(e.target.value); renderRows(); renderMaterialFields(); schedule(); } });
+  const cd = $('#climate-dlg');
+  document.addEventListener('click', e => { if (e.target.closest('#climate-open, [data-climate-open]')) { renderBound(); cd.showModal(); } });
+  $('#climate-close').onclick = () => cd.close();
+  cd.addEventListener('click', e => { if (e.target === cd) cd.close(); });
   $('#climate-reset').onclick = () => { state.season.climate = {}; renderBound(); schedule(); };
   $('#add-loader').onclick = () => { state.loaders.push({ ...clone(DEFAULTS.loaders[0]), modelId: 'cat385cl', bucketId: 'hb46' }); renderRows(); schedule(); };
   $('#add-truck').onclick = () => { state.trucks.push({ ...clone(DEFAULTS.trucks[0]), modelId: 'jd460p', count: 2 }); renderRows(); schedule(); };
@@ -549,20 +608,19 @@ function wire() {
   $('#sel-speed-truck').onchange = () => renderCharts();
   $('#sel-sweep').onchange = () => renderCharts();
   $$('.unit-toggle button').forEach(b => b.onclick = () => { state.units = b.dataset.units; setSystem(b.dataset.units); $$('.unit-toggle button').forEach(x => x.classList.toggle('active', x === b)); renderRows(); renderDocs(); run(); });
-  $$('.tab').forEach(b => b.onclick = () => { $$('.tab').forEach(x => x.classList.toggle('active', x === b)); $$('.tabpanel').forEach(p => p.classList.toggle('active', p.id === `tab-${b.dataset.tab}`)); if (b.dataset.tab === 'equip') renderDocs(); try { localStorage.setItem('mfc-tab', b.dataset.tab); } catch (e) { /* ignore */ } });
+  $$('.tab').forEach(b => b.onclick = () => { $$('.tab').forEach(x => x.classList.toggle('active', x === b)); $$('.tabpanel').forEach(p => p.classList.toggle('active', p.id === `tab-${b.dataset.tab}`)); $('#projbar').hidden = !['visual', 'calc'].includes(b.dataset.tab); if (b.dataset.tab === 'equip') renderDocs(); try { localStorage.setItem('mfc-tab', b.dataset.tab); } catch (e) { /* ignore */ } });
   $('#btn-export').onclick = exportCSV;
   $('#btn-print').onclick = () => window.print();
   $('#btn-save').onclick = () => download('match-factor-scenario.json', JSON.stringify(state, null, 1), 'application/json');
   $('#scenario-file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { state = migrate(JSON.parse(await f.text())); boot(); } catch (err) { alertBox(`Could not open scenario: ${err.message}`); } e.target.value = ''; };
   $('#btn-reset').onclick = () => { const pts = state.profile.points, nm = state.profile.name; state = clone(DEFAULTS); state.profile.points = pts; state.profile.name = nm; boot(); };
 }
-function setMaterial(id) { state.materialId = id; state.material = { ...pickMat(id), frozen: state.material.frozen }; const s = $('#sel-material'); if (s) s.value = id; renderMaterialFields(); }
+function setMaterial(id) { state.materialId = id; state.material = { ...pickMat(id), frozen: state.material.frozen }; $$('.sel-material').forEach(s => { s.value = id; }); renderMaterialFields(); }
 function renderMaterialFields() { const b = $('#bank-field'); if (b) b.hidden = !matDerived().isBlast; }
 function renderSiteDerived() {
   const c = lastCond, md = matDerived(); if (!c) return;
   const el = $('#site-derived');
-  if (el) el.innerHTML = `Month average <b>${fmt('temp', c.tempAuto, 0)} ${unit('temp')}</b>${state.site.tempC === '' ? ' (used)' : ''} · daylight ${hToClock(c.sun.sunrise)}–${hToClock(c.sun.sunset)} (${c.sun.dayLenH.toFixed(1)} h) · dark ${(c.darkFrac * 100).toFixed(0)} % of shift time<br>Water truck: <b>${esc(c.water.label)}</b>${c.dust > 0 ? ` · dust ${c.dust >= 0.5 ? 'heavy' : 'light'} (speed cap ${c.capKmh ? fmtU('speed', c.capKmh, 0) : 'none'})` : ''}${c.sky.capKmh ? ` · visibility cap ${fmtU('speed', c.sky.capKmh, 0)}` : ''}`;
-  const wt = $('#water-cb'); if (wt) { wt.disabled = c.water.status === 'no'; }
+  if (el) el.innerHTML = `${result && result.season ? `Most common day (${esc(result.season.ref.label)}, ${result.season.ref.month}): ` : 'Checked day: '}${result && result.season ? `Air <b>${fmt("temp", c.tempC, 0)} ${unit("temp")}</b> (month average at the haul road)` : `Month average <b>${fmt("temp", c.tempAuto, 0)} ${unit("temp")}</b>${state.site.tempC === "" ? " (used)" : ""}`} · daylight ${hToClock(c.sun.sunrise)}–${hToClock(c.sun.sunset)} (${c.sun.dayLenH.toFixed(1)} h) · dark ${(c.darkFrac * 100).toFixed(0)} % of shift time<br>Water truck: <b>${esc(c.water.label)}</b>${c.dust > 0 ? ` · dust ${c.dust >= 0.5 ? 'heavy' : 'light'} (speed cap ${c.capKmh ? fmtU('speed', c.capKmh, 0) : 'none'})` : ''}${c.sky.capKmh ? ` · visibility cap ${fmtU('speed', c.sky.capKmh, 0)}` : ''}`;
   const mEl = $('#material-derived');
   if (mEl) mEl.innerHTML = `Loose density in the truck <b>${fmt('dens', md.loose, getSystem() === 'si' ? 3 : 0)} ${unit('dens')}</b> (load factor ${md.loadFactor.toFixed(3)})${md.isBlast ? ` · BCM uses solid rock ${fmt('dens', md.bank, getSystem() === 'si' ? 2 : 0)} ${unit('dens')}` : ''}`;
   const tEl = $('#time-derived');
@@ -596,7 +654,7 @@ $('#profile-edit').onclick = editProfile;
 initVisual({
   state: () => state, getPath: p => getPath(state, p), setPath: (p, v) => setPath(state, p, v), schedule, renderRows, renderBound, normaliseRows, setMaterial,
   newTruck: () => clone(DEFAULTS.trucks[0]), newLoader: () => clone(DEFAULTS.loaders[0]), loadSample, loadProfileFile,
-  cond: () => lastCond, matDerived, waterfall, targetCalc, targetText, volU, setupFactor, swingOf, waterfallHTML, bcU, lcU, setProfile, editProfile,
+  cond: () => lastCond, matDerived, weatherLabel, waterfall, targetCalc, targetText, volU, setupFactor, swingOf, waterfallHTML, bcU, lcU, setProfile, editProfile,
 });
 boot();
 try { const t = localStorage.getItem('mfc-tab'); if (t) document.querySelector(`.tab[data-tab="${t}"]`)?.click(); } catch (e) { /* ignore */ }

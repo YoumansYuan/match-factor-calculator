@@ -423,3 +423,26 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
 .climate-tbl input { width: 80px; }
 .climate-tbl th { white-space: normal; font-size: 11.5px; }
 .tblwrap { overflow-x: auto; }
+
+/* Project & weather bar (second row of the sticky header; global inputs) */
+.projbar { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 13px; }
+.projbar[hidden] { display: none; }
+.pb-group { display: flex; align-items: center; gap: 8px; }
+.pb-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); align-self: center; }
+.projbar label { display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.projbar label.check { flex-direction: row; align-items: center; gap: 6px; align-self: center; padding-top: 0; }
+.projbar input[type=date] { width: 140px; }
+.pb-inline { display: flex; gap: 4px; }
+.pb-target input { width: 110px; }
+.pb-target select { width: 150px; }
+.projbar .chip { padding: 4px 10px; flex-direction: column; align-items: flex-start; gap: 0; border-radius: 9px; line-height: 1.25; }
+.projbar .chip small { color: var(--muted); font-size: 11px; }
+.pb-weather .slider-row { min-width: 240px; }
+.pb-weather .slider-row input { flex: 1; }
+.pb-day { flex-basis: 100%; display: flex; gap: 14px; align-items: center; background: var(--accent-soft); border-radius: 8px; padding: 6px 10px; }
+.pb-day[hidden] { display: none; }
+.pb-day select { width: 170px; } .pb-day input[type=number] { width: 110px; }
+.pb-status { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+.btn.sm { padding: 4px 10px; font-size: 12px; }
+.projbar input[type=number], .projbar input[type=date], .projbar select { padding: 4px 6px; }
+#climate-dlg { max-width: 1100px; width: calc(100vw - 48px); }

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611272133">
+  <link rel="stylesheet" href="css/styles.css?v=202611272144">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -30,6 +30,29 @@
     <button data-units="si" class="active">Metric</button>
     <button data-units="imp">Imperial</button>
   </div>
+  <div class="projbar" id="projbar">
+    <div class="pb-group"><span class="pb-lbl">Project</span>
+      <label>Start<input type="date" data-bind="site.date"></label>
+      <label title="Optional: last day of the schedule">End<input type="date" data-bind="season.end"></label>
+      <label class="pb-target">Target <span class="u" data-u="vol"></span><span class="pb-inline"><input type="number" data-bind="target.volume" data-q="vol" step="1000" min="0" placeholder="e.g. 500000"><select data-bind="target.basis" class="sel-target-basis" aria-label="Target measured as"></select></span></label>
+    </div>
+    <div class="pb-group"><span class="pb-lbl">Pit</span>
+      <button class="chip" data-pop="material" id="pb-material"></button>
+      <button class="chip" data-pop="shift" id="pb-shift"></button>
+    </div>
+    <div class="pb-group pb-weather"><span class="pb-lbl">Weather</span>
+      <span class="slider-row"><small>Optimistic</small><input type="range" min="-1" max="1" step="0.05" data-bind="season.level" aria-label="Weather level, optimistic to cautious"><small>Cautious</small></span>
+      <button class="btn ghost sm" id="climate-open">Monthly climate</button>
+      <label class="check"><input type="checkbox" data-bind="season.checkDay"> Check one weather day</label>
+    </div>
+    <div class="pb-day" id="pb-day" hidden>
+      <label title="Blank = the start date">Day<input type="date" data-bind="season.checkDate"></label>
+      <label>Sky<select data-bind="site.skyId" class="sel-sky"></select></label>
+      <label>Road surface<select data-bind="site.surfaceId" class="sel-surface"></select></label>
+      <label>Air <span class="u" data-u="temp"></span><input type="number" data-bind="site.tempC" data-q="temp" step="1" placeholder="month avg"></label>
+    </div>
+    <p class="pb-status" id="pb-status"></p>
+  </div>
 </header>
 
 <main>
@@ -46,11 +69,8 @@
   <div id="fleet-bar" class="fleet-bar"></div>
   <div id="v-summary" class="v-summary"></div>
   <div class="v-card" id="v-season">
-    <h3>Season schedule <small class="muted">month by month with the Fording River weather</small></h3>
+    <h3>Season weather <small class="muted">month by month with the Fording River weather · same slider as the top bar</small></h3>
     <div class="v-season-ctl">
-      <label class="check"><input type="checkbox" data-bind="season.on"> On</label>
-      <label>Start<input type="date" data-bind="site.date"></label>
-      <label>End <span class="u">(optional)</span><input type="date" data-bind="season.end"></label>
       <label class="season-slider">Weather <span class="u season-level-lbl"></span>
         <span class="slider-row"><small>Optimistic</small><input type="range" min="-1" max="1" step="0.05" data-bind="season.level"><small>Cautious</small></span></label>
     </div>
@@ -58,6 +78,17 @@
   </div>
 </section>
 
+<dialog id="climate-dlg" class="pop" aria-labelledby="climate-title">
+  <div class="pop-head"><h3 id="climate-title">Monthly climate — Fording River</h3><button class="link" id="climate-close" aria-label="Close">×</button></div>
+  <div class="pop-body">
+    <p class="note">Station: Environment Canada <b>Fording River Cominco</b> (climate ID 1152899, 1,585 m), daily records 1970–2007. Blank = station median (hover a box to see its P10 / P90). An edited value moves the whole P10–P90 range with it. Temperatures are corrected from the station to the haul-road elevation (−0.6 °C per 100 m). <b>Heavy-snow days</b> = snow days that are part of a storm totalling ≥ 5 cm (consecutive snow days added up). <b>Dense-fog days</b>: no Elk Valley station records visibility; the default is Cranbrook airport (940 m, days with ≥ 3 h below 1 km visibility), which likely under-states mountain fog — please replace it with your site's experience.</p>
+    <div class="tblwrap"><table class="tbl climate-tbl"><thead><tr id="climate-head"></tr></thead><tbody id="climate-rows"></tbody></table></div>
+    <div class="grid g3" style="margin-top:10px">
+      <label>Hours lost per dense-fog day <span class="u">h</span><input type="number" step="1" min="0" data-bind="season.fogStopH" title="Hours of the working day when trucks are stood down because visibility is too low"></label>
+    </div>
+    <button class="link" id="climate-reset">Reset to station values</button>
+  </div>
+</dialog>
 <dialog id="pop" class="pop" aria-labelledby="pop-title">
   <div class="pop-head"><h3 id="pop-title"></h3><button id="pop-close" class="x" aria-label="Close">×</button></div>
   <div id="pop-body" class="pop-body"></div>
@@ -101,14 +132,10 @@
     <div class="inputs">
 
       <details class="card" open>
-        <summary><span class="num">1</span> Site, Weather &amp; Haul Road</summary>
+        <summary><span class="num">1</span> Site &amp; Haul Road</summary>
         <div class="grid g3">
-          <label>Work date<input type="date" data-bind="site.date"></label>
           <label>Site latitude <span class="u">°N</span><input type="number" data-bind="site.latitude" step="0.1"></label>
           <label>Site longitude <span class="u">°E</span><input type="number" data-bind="site.longitude" step="0.1"></label>
-          <label>Air temperature <span class="u" data-u="temp"></span><input type="number" data-bind="site.tempC" data-q="temp" step="1" placeholder="month average"></label>
-          <label>Weather (sky &amp; visibility)<select data-bind="site.skyId" id="sel-sky"></select></label>
-          <label>Road surface condition<select data-bind="site.surfaceId" id="sel-surface"></select></label>
           <label class="span2">Road type (base rolling resistance)<select data-bind="site.roadId" id="sel-road"></select></label>
           <label>Grader maintenance<select data-bind="site.gradingId" id="sel-grading"></select></label>
           <label class="check"><input type="checkbox" data-bind="site.waterTruck" id="water-cb"> Water truck for dust control</label>
@@ -119,33 +146,20 @@
           <label>Speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.speedLimitKmh" data-q="speed" step="1"></label>
           <label>Downhill speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.downhillLimitKmh" data-q="speed" step="1"></label>
           <label>Apply downhill limit on grades steeper than <span class="u">%</span><input type="number" data-bind="site.downhillGradePct" step="0.5" title="Negative = downhill in the direction of travel. −9 means the downhill speed limit is used only on descents steeper than 9 % (e.g. −10 %); gentler descents use the normal speed limit."><small class="muted">e.g. −9 = only on descents steeper than 9 %</small></label>
-          <p class="note span3">Elevation for engine altitude deration comes from the haul profile (each segment uses its own elevation; the excavator uses the loading point).</p>
+          <p class="note span3">Weather, air temperature and road surface come from the month-by-month site weather (top bar). Elevation for engine altitude deration comes from the haul profile (each segment uses its own elevation; the excavator uses the loading point).</p>
         </div>
       </details>
 
       <details class="card" open>
         <summary><span class="num">S</span> Seasonal schedule (month-by-month weather)</summary>
-        <div class="grid g3">
-          <label class="check span3"><input type="checkbox" data-bind="season.on"> Work out the schedule month by month with the site weather (from the work date above)</label>
-          <label>Start (work date)<input type="date" data-bind="site.date"></label>
-          <label>End date <span class="u">(optional)</span><input type="date" data-bind="season.end"></label>
-          <label>Hours lost per dense-fog day <span class="u">h</span><input type="number" step="1" min="0" data-bind="season.fogStopH" title="Hours of the working day when trucks are stood down because visibility is too low"></label>
-          <label class="span3 season-slider">Weather level <span class="u season-level-lbl"></span>
-            <span class="slider-row"><small>Optimistic</small><input type="range" min="-1" max="1" step="0.05" data-bind="season.level"><small>Cautious</small></span></label>
-          <p class="note span3">Each month's days are split into heavy snowfall, light snowfall, rain, dry with a snow-packed road, and dry days, from the site climate. Every day type is run through the same fleet, road and shift model, then weighted by its number of days. The slider moves every month from the station median towards a 1-in-10 good year (left) or a 1-in-10 bad year (right). Working days per month = calendar days × working days per year ÷ 365.</p>
-          <details class="span3 climate-edit"><summary>Monthly climate — Fording River (edit)</summary>
-            <p class="note">Station: Environment Canada <b>Fording River Cominco</b> (climate ID 1152899, 1,585 m), daily records 1970–2007. Blank = station median (hover a box to see its P10 / P90). An edited value moves the whole P10–P90 range with it. Temperatures are corrected from the station to the haul-road elevation (−0.6 °C per 100 m). <b>Heavy-snow days</b> = snow days that are part of a storm totalling ≥ 5 cm (consecutive snow days added up). <b>Dense-fog days</b>: no Elk Valley station records visibility; the default is Cranbrook airport (940 m, days with ≥ 3 h below 1 km visibility), which likely under-states mountain fog — please replace it with your site's experience.</p>
-            <div class="tblwrap"><table class="tbl climate-tbl"><thead><tr id="climate-head"></tr></thead><tbody id="climate-rows"></tbody></table></div>
-            <button class="link" id="climate-reset">Reset to station values</button>
-          </details>
-        </div>
+        <p class="note">Each month's days are split into dense fog, heavy snowfall, light snowfall, rain, dry with a snow-packed road, and dry days, from the site climate. Every day type is run through the same fleet, road and shift model, then weighted by its number of days. The weather slider in the top bar moves every month from the station median towards a 1-in-10 good year (left) or a 1-in-10 bad year (right). Working days per month = calendar days × working days per year ÷ 365. <button class="link" data-climate-open>Edit the monthly climate</button></p>
         <div id="season-out"></div>
       </details>
 
       <details class="card" open>
         <summary><span class="num">2</span> Material</summary>
         <div class="grid g4">
-          <label class="span2">Material<select id="sel-material"></select></label>
+          <label class="span2">Material<select id="sel-material" class="sel-material"></select></label>
           <label>Density at the dig face <span class="u" data-u="dens"></span><input type="number" data-bind="material.digTm3" data-q="dens" step="0.01"></label>
           <label>Swell, dig face → truck <span class="u">%</span><input type="number" data-bind="material.swellPct" step="1"></label>
           <label id="bank-field" hidden>Solid rock density before blast <span class="u" data-u="dens"></span><input type="number" data-bind="material.bankTm3" data-q="dens" step="0.01"></label>
@@ -153,8 +167,6 @@
           <div class="resolved span2" id="material-derived"></div>
           <label class="check span3"><input type="checkbox" data-bind="material.frozen"> Frozen / cemented material <small>(fill factor × <span data-show="ops.frozenFillMult"></span>, dig cycle × <span data-show="ops.frozenCycleMult"></span>)</small></label>
           <p class="note span4" id="material-note"></p>
-          <label class="span2">Target volume to move <span class="u" data-u="vol"></span><input type="number" data-bind="target.volume" data-q="vol" step="1000" min="0" placeholder="e.g. 500000"></label>
-          <label class="span2">Target measured as<select data-bind="target.basis" id="sel-target-basis"></select></label>
           <div class="resolved span4" id="target-derived"></div>
         </div>
       </details>
@@ -312,6 +324,6 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611272133"></script>
+<script type="module" src="js/app.js?v=202611272144"></script>
 </body>
 </html>

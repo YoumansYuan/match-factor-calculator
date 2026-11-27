@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272133';
-import { unit, fmt, fmtU, toDisp } from './units.js?v=202611272133';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272144';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611272144';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
@@ -159,6 +159,7 @@ day types per month:  dense fog (from dry days)  → sky Fog, part of the day lo
                       dry                        → sky Clear, road Dry (dust / water-truck rule by temperature)
 tonnes per working day (month) = Σ day-type share × production of that day type (same fleet, road, shift and darkness for mid-month)
 working days = calendar days × working days per year ÷ 365;  finish = day the cumulative tonnes reach the target</div>
+<p>The weather is a project-wide input (top bar): start date, optional end date, target and the weather slider. The headline production figures (per hour, per shift, per day, per year) are the <b>average per working day over the schedule</b> = total tonnes ÷ total working days, from the start date to the finish (or end) date. Cycle times, speeds, match factor, fuel and the shift-time waterfall are shown for the <b>most common day type</b> over the schedule (weighted by working days), in the month where it is most common. Ticking <b>Check one weather day</b> shows every result for one chosen day, sky, road surface and temperature instead; the target finish date always uses the month-by-month weather.</p>
 <p>Snow and ice roads also cap the speed (packed snow 40, loose snow 30, ice 25 km/h — planning estimates). The grader / snow-clearing program removes part of the snow penalty: snowClear = 0 (no grader), 0.3 (once per shift), 0.45 (twice per shift), 0.6 (dedicated grader), 0.85 (grader + plow &amp; sander through snowfall), 0.95 (full winter program). On snow roads RR and traction penalties are × (1 − snowClear) and the snow speed cap × (1 + 0.6 snowClear); on ice half of that (sanding). Months are independent: the cautious end assumes every month is a 1-in-10 bad month, which together is rarer than 1 in 10.</p>
 
 <h3>7. Fuel and CO₂</h3>

@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611272133';
-import { hToClock } from './conditions.js?v=202611272133';
-import { byId } from './engine.js?v=202611272133';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611272133';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611272144';
+import { hToClock } from './conditions.js?v=202611272144';
+import { byId } from './engine.js?v=202611272144';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611272144';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -227,12 +227,10 @@ function buildRoadStrip() {
     <circle cx="${P[0][0]}" cy="${P[0][1]}" r="4" class="dot"/><circle cx="${P.at(-1)[0]}" cy="${P.at(-1)[1]}" r="4" class="dot"/>
     <text class="lbl-xs" x="${X0 - 8}" y="${P[0][1] + 4}" text-anchor="end">Load</text>
     <text class="lbl-xs" x="${X1 + 8}" y="${P.at(-1)[1] + 4}">Dump</text>
-    <text class="lbl-sm" x="12" y="18">Haul road · ${fmtU('len', L, 0)} one way · ${fmt('len', rise, 0)} ${unit('len')} up, ${fmt('len', fall, 0)} ${unit('len')} down when loaded · ${esc(skyName())}, ${esc(surfName())} road · tap to change</text>
+    <text class="lbl-sm" x="12" y="18">Haul road · ${fmtU('len', L, 0)} one way · ${fmt('len', rise, 0)} ${unit('len')} up, ${fmt('len', fall, 0)} ${unit('len')} down when loaded · ${esc(api.weatherLabel())} · tap to change</text>
   </g>`;
 }
 
-const skyName = () => byId(SKY, api.state().site.skyId)?.name || '';
-const surfName = () => byId(SURFACES, api.state().site.surfaceId)?.name || '';
 const hm = h => { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`; };
 
 // ------------------------------------------------------------------ fleet bar
@@ -249,7 +247,7 @@ function renderFleetBar() {
   $('#fleet-bar').innerHTML = `
     <div class="fb-group"><span class="fb-lbl">Excavators</span>${lo}<button class="chip add" data-pop="add-loader">+ Add excavator</button></div>
     <div class="fb-group"><span class="fb-lbl">Trucks</span>${tr}<button class="chip add" data-pop="add-truck">+ Add trucks</button></div>
-    <div class="fb-group"><span class="fb-lbl">Site</span><button class="chip" data-pop="material"><b>${esc(byId(MATERIALS, st.materialId)?.name || 'Material')}</b><small>${fmt('dens', api.matDerived().loose, 2)} ${unit('dens')} in the truck</small></button><button class="chip" data-pop="road"><b>Weather &amp; road</b><small>${esc(skyName())} · ${esc(surfName())}</small></button><button class="chip" data-pop="shift"><b>Work hours</b><small>${esc(st.ops.shiftStart)}–${esc(st.ops.shiftEnd)} × ${st.ops.shiftsPerDay}/day</small></button></div>`;
+    <div class="fb-group"><span class="fb-lbl">Road</span><button class="chip" data-pop="road"><b>Haul road</b><small>${esc((byId(ROADS, st.site.roadId)?.name || '').split(',')[0])} · ${esc((byId(GRADING, st.site.gradingId)?.name || '').split(/[,(]/)[0].trim().toLowerCase())}</small></button></div>`;
 }
 
 // ------------------------------------------------------------------ plain-language results
@@ -299,7 +297,7 @@ function renderSummary() {
       <div class="v-sug">${sug}</div>
     </div>
     <div class="v-stats">
-      <div class="v-stat"><span class="lbl">Moved per hour</span><b>${fmtU('rate', R.prod.tph, 0)}</b><small>${fmtU('mass', R.prod.shiftT, 0)} per shift (${hm(api.cond().operatingH)} operating)</small></div>
+      <div class="v-stat"><span class="lbl">Moved per hour${R.season ? ' · season average' : ''}</span><b>${fmtU('rate', R.prod.tph, 0)}</b><small>${fmtU('mass', R.prod.shiftT, 0)} per shift (${hm(api.cond().operatingH)} operating)</small></div>
       <div class="v-stat"><span class="lbl">Volume per hour</span><b>${fmt('vol', R.prod.tph / api.matDerived().bank, 0)} ${api.bcU()}</b><small>dug · ${fmt('vol', R.prod.tph / api.matDerived().loose, 0)} ${api.lcU()} at the dump</small></div>
       ${targetCard()}
       <div class="v-stat"><span class="lbl">Per year</span><b>${fmt('mass', R.prod.yearT / 1e6, 2)} M ${unit('mass')}</b><small>${st.ops.daysPerYear} days, ${st.ops.shiftsPerDay} shifts/day</small></div>
@@ -400,22 +398,19 @@ function renderPop() {
       <label class="check"><input type="checkbox" data-bind="material.frozen"> Frozen or cemented (buckets fill less, digging is slower)</label>
       <p class="note">${mat ? esc(mat.src) : ''}</p>`;
   } else if (kind === 'road') {
-    title.textContent = 'Weather, site & haul road';
+    title.textContent = 'Site & haul road';
     const c = api.cond();
     body.innerHTML = `
-      <h4>Weather (visibility)</h4><div class="seg">${SKY.map(x => `<button class="${x.id === st.site.skyId ? 'sel' : ''}" data-sky="${x.id}">${esc(x.name)}</button>`).join('')}</div>
+      <p class="note">Weather, air temperature and road surface come from the month-by-month site weather (slider and <b>Monthly climate</b> in the top bar). To look at one particular day, tick <b>Check one weather day</b> there.</p>
       <div class="grid g2">
-        <label>Work date<input type="date" data-bind="site.date"></label>
-        <label>Air temperature <span class="u">(${unit('temp')}, blank = month average)</span><input type="number" step="1" data-bind="site.tempC" data-q="temp" placeholder="${c ? fmt('temp', c.tempAuto, 0) : ''}"></label>
         <label>Site latitude <span class="u">°N</span><input type="number" step="0.1" data-bind="site.latitude"></label>
         <label>Site longitude <span class="u">°E</span><input type="number" step="0.1" data-bind="site.longitude"></label>
       </div>
       <h4>Road</h4>
       <div class="grid g2">
-        <label>Surface condition today<select data-bind="site.surfaceId">${SURFACES.map(x => `<option value="${x.id}" ${x.id === st.site.surfaceId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
         <label>Road type<select data-bind="site.roadId">${ROADS.map(x => `<option value="${x.id}" ${x.id === st.site.roadId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
         <label>Grader maintenance<select data-bind="site.gradingId">${GRADING.map(x => `<option value="${x.id}" ${x.id === st.site.gradingId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
-        <label class="check"><input type="checkbox" data-bind="site.waterTruck" ${c && c.water.status === 'no' ? 'disabled' : ''}> Water truck for dust control${c && c.water.status === 'no' ? ' <small>(too cold, water freezes)</small>' : c && c.water.status === 'day' ? ' <small>(daytime only)</small>' : ''}</label>
+        <label class="check"><input type="checkbox" data-bind="site.waterTruck"> Water truck for dust control <small>(used only when it is above freezing)</small></label>
         <label>Speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.speedLimitKmh" data-q="speed"></label>
         <label>Downhill speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.downhillLimitKmh" data-q="speed"></label>
         <label>Apply it on descents steeper than <span class="u">% (e.g. −9)</span><input type="number" step="0.5" data-bind="site.downhillGradePct"></label>
@@ -467,7 +462,7 @@ function matNote() {
 }
 function roadNote() {
   const c = api.cond(); if (!c) return '';
-  return `${esc(c.water.label)} for the water truck at ${fmt('temp', c.tempC, 0)} ${unit('temp')}. Daylight ${hToClock(c.sun.sunrise)}–${hToClock(c.sun.sunset)}, so ${(c.darkFrac * 100).toFixed(0)} % of shift time is in the dark.${c.dust > 0 ? ` Dry road without water: ${c.dust >= 0.5 ? 'heavy' : 'light'} dust.` : ''}${c.capKmh ? ` Visibility speed cap ${fmtU('speed', c.capKmh, 0)}.` : ''} Rolling resistance ${R ? R.road.rr.toFixed(1) : '–'} %, traction ${R ? R.road.mu.toFixed(2) : '–'}.`;
+  return `${R && R.season ? `On the most common day (${esc(R.season.ref.label.toLowerCase())}, ${R.season.ref.month}): ` : ""}${esc(c.water.label)} for the water truck at ${fmt('temp', c.tempC, 0)} ${unit('temp')}. Daylight ${hToClock(c.sun.sunrise)}–${hToClock(c.sun.sunset)}, so ${(c.darkFrac * 100).toFixed(0)} % of shift time is in the dark.${c.dust > 0 ? ` Dry road without water: ${c.dust >= 0.5 ? 'heavy' : 'light'} dust.` : ''}${c.capKmh ? ` Visibility speed cap ${fmtU('speed', c.capKmh, 0)}.` : ''} Rolling resistance ${R ? R.road.rr.toFixed(1) : '–'} %, traction ${R ? R.road.mu.toFixed(2) : '–'}.`;
 }
 // keep the live line in an open dialog current without re-rendering (which would steal input focus)
 function refreshPopLive() {
@@ -482,7 +477,7 @@ function closePop() { popCtx = null; const d = $('#pop'); if (d.open) d.close();
 function setPathNum(path, v) { api.setPath(path, v); }
 function wire() {
   document.addEventListener('click', e => {
-    const inVisual = e.target.closest('#tab-visual, #pop');
+    const inVisual = e.target.closest('#tab-visual, #pop, #projbar');
     if (!inVisual) return;
     const dec = e.target.closest('[data-dec]');
     if (dec) { decTruck(+dec.dataset.dec); return; }
