@@ -6,11 +6,6 @@ import { unit, fmt, fmtU, toDisp, toSI } from './units.js';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
-let geo = null;           // scene geometry for the current result
-let sim = null;           // discrete-event animation state
-let playing = true;
-let speed = 60;           // simulated seconds per real second
-let lastTs = 0;
 let popCtx = null;        // what the dialog is editing
 
 const $ = s => document.querySelector(s);
@@ -19,14 +14,11 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const TRUCK_COLORS = ['--t1', '--t2', '--t3', '--t4', '--t5'];
 const truckColor = i => `var(${TRUCK_COLORS[i % TRUCK_COLORS.length]})`;
 const isADT = m => /articulated/i.test(m.type);
-const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ------------------------------------------------------------------ public
 export function initVisual(hooks) {
   api = hooks;
-  if (reduced()) playing = false;
   wire();
-  requestAnimationFrame(frame);
   let rw = 0;
   window.addEventListener('resize', () => { const w = sceneWidth(); if (w !== rw) { rw = w; if (R) buildScene(); } });
 }
@@ -76,253 +68,89 @@ function excavatorSVG(color) {
     </g>`;
 }
 
-// ------------------------------------------------------------------ scene geometry
-function sceneWidth() { const el = $('#scene-wrap'); const w = el ? el.clientWidth : 1000; return clamp(Math.round(w), 620, 1000); }
-
-function buildGeometry() {
-  const W = sceneWidth(), H = 330;
-  const segs = R.segs;
-  const cum = [0]; segs.forEach(s => cum.push(cum.at(-1) + s.len));
-  const zs = [segs[0].z0, ...segs.map(s => s.z1)];
-  const L = cum.at(-1);
-  let zmin = Math.min(...zs), zmax = Math.max(...zs);
-  if (zmax - zmin < 60) { const m = (zmax + zmin) / 2; zmin = m - 30; zmax = m + 30; }
-  const X0 = 250, X1 = W - 120, yTop = 185, yBot = 275;
-  const xOf = d => X0 + (d / L) * (X1 - X0);
-  const yOfZ = z => yBot - ((z - zmin) / (zmax - zmin)) * (yBot - yTop);
-  const zAt = d => { d = clamp(d, 0, L); let i = 1; while (i < cum.length - 1 && cum[i] < d) i++; const f = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1); return zs[i - 1] + f * (zs[i] - zs[i - 1]); };
-  const pt = d => ({ x: xOf(d), y: yOfZ(zAt(d)) });
-  const angAt = d => { const a = pt(d - L / 200), b = pt(d + L / 200); return clamp(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI * 0.6, -14, 14); };
-  const y0 = yOfZ(zs[0]), yEnd = yOfZ(zs.at(-1));
-  // time → distance maps per truck type
-  const maps = R.trucks.map(t => {
-    const mk = list => { const T = [0], D = [0]; list.forEach(s => { T.push(T.at(-1) + s.t); D.push(D.at(-1) + s.len); }); return { T, D }; };
-    return { haul: mk(t.haul.segs), ret: mk(t.ret.segs) };
-  });
-  return { W, H, L, X0, X1, y0, yEnd, xOf, yOfZ, zAt, pt, angAt, maps, zmin, zmax, cum, zs };
-}
-function dAtTime(map, t) {
-  const { T, D } = map; if (t <= 0) return 0; if (t >= T.at(-1)) return D.at(-1);
-  let i = 1; while (T[i] < t) i++;
-  return D[i - 1] + (t - T[i - 1]) / ((T[i] - T[i - 1]) || 1) * (D[i] - D[i - 1]);
-}
-
-// loading positions: up to 3 depth rows
-const ROW = [{ dy: 0, s: 1 }, { dy: -34, s: 0.84 }, { dy: -62, s: 0.7 }];
-const EX_X = 95, SPOT_X = 178;
+// ------------------------------------------------------------------ static scene: excavator + a line of trucks
+function sceneWidth() { const el = $('#scene-wrap'); const w = el ? el.clientWidth : 1000; return clamp(Math.round(w), 640, 1100); }
+const shortName = m => m.name.replace(/^(CAT|John Deere)\s+/i, '');
+const ROW = [{ dy: 0, s: 1 }, { dy: -30, s: 0.84 }, { dy: -54, s: 0.7 }];
+const EX_X = 95, SPOT_X = 182;
 
 function buildScene() {
-  const svg = $('#scene');
-  if (!svg || !R || !R.trucks.length) { if (svg) svg.innerHTML = ''; sim = null; return; }
-  geo = buildGeometry();
-  const g = geo, st = api.state();
-  svg.setAttribute('viewBox', `0 0 ${g.W} ${g.H}`);
-  // ground polygon following the road profile
-  let road = '';
-  const N = 120;
-  for (let k = 0; k <= N; k++) { const p = g.pt(g.L * k / N); road += `${k ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`; }
-  const ground = `M0,${g.y0} L${g.X0},${g.y0} ${road.replace(/^M/, 'L')} L${g.W},${g.yEnd} L${g.W},${g.H} L0,${g.H} Z`;
-  // material face (bench) behind the excavators
-  const face = `M0,${g.y0 - 120} L18,${g.y0 - 118} L30,${g.y0 - 96} L26,${g.y0 - 80} L44,${g.y0 - 58} L40,${g.y0 - 40} L58,${g.y0 - 18} L64,${g.y0} L0,${g.y0} Z`;
-  // dump pile at the end
-  const dx = g.W - 70;
-  const pile = `M${dx - 50},${g.yEnd} Q${dx},${g.yEnd - 70} ${g.W},${g.yEnd - 40} L${g.W},${g.yEnd} Z`;
-  const rise = R.segs.reduce((s, x) => s + Math.max(0, x.z1 - x.z0), 0);
-  const fall = R.segs.reduce((s, x) => s + Math.max(0, x.z0 - x.z1), 0);
-  const mid = g.pt(g.L * 0.5);
+  const svg = $('#scene'); if (!svg) return;
+  const st = api.state();
+  const W = sceneWidth(), H = 250, y0 = 190;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const mat = byId(MATERIALS, st.materialId);
-  // excavators (one icon per unit, max 3 rows)
+  // material face
+  const face = `M0,${y0 - 120} L18,${y0 - 118} L30,${y0 - 96} L26,${y0 - 80} L44,${y0 - 58} L40,${y0 - 40} L58,${y0 - 18} L64,${y0} L0,${y0} Z`;
+  // excavators: one icon per unit, max 3 depth rows; drawn mid-pass (dumping over the first truck)
   const units = [];
-  R.loaders.forEach((l, j) => { for (let u = 0; u < l.count; u++) units.push({ j, stateIdx: activeLoaders()[j] }); });
-  const shown = units.slice(0, 3);
+  st.loaders.forEach((l, i) => { for (let u = 0; u < (+l.count || 0); u++) units.push(i); });
   let ex = '';
-  shown.map((u, k) => ({ u, k })).reverse().forEach(({ u, k }) => {
-    const r = ROW[k];
-    ex += `<g class="hot ex" data-pop="loader:${u.stateIdx}" tabindex="0" role="button" aria-label="Change excavator: ${esc(R.loaders[u.j].model.name)}" transform="translate(${EX_X + k * 6},${g.y0 + r.dy}) scale(${r.s})">
-      <g class="ex-root" id="ex-${k}">${excavatorSVG('var(--exc)')}</g>
-      ${k === 0 ? `<text class="lbl-sm" x="0" y="16" text-anchor="middle">${esc(R.loaders[u.j].model.name)}${units.length > 1 ? ` · ${units.length} units` : ''}</text>` : ''}
-    </g>`;
+  units.slice(0, 3).map((i, k) => ({ i, k })).reverse().forEach(({ i, k }) => {
+    const r = ROW[k], m = byId(LOADERS, st.loaders[i].modelId);
+    ex += `<g class="hot ex" data-pop="loader:${i}" tabindex="0" role="button" aria-label="Change excavator: ${esc(m.name)}" transform="translate(${EX_X + k * 6},${y0 + r.dy}) scale(${r.s})">
+      <g class="ex-root">${excavatorSVG('var(--exc)')}</g>
+      ${k === 0 ? `<text class="lbl-sm" x="0" y="17" text-anchor="middle">${esc(m.name)}${units.length > 1 ? ` · ${units.length} units` : ''}</text>` : ''}</g>`;
   });
-  const hint = (() => { try { if (localStorage.getItem('mfc-hinted')) return ''; } catch (e) { /* ignore */ } return null; })() ?? `<g class="hint" transform="translate(${EX_X + 60},${g.y0 - 100})"><rect x="-86" y="-16" width="172" height="24" rx="12"/><text x="0" y="0" text-anchor="middle">Tap a machine to change it</text></g>`;
-  const labels = `
-    <text class="lbl" x="${mid.x}" y="${Math.max(70, Math.min(mid.y, g.y0, g.yEnd) - 62)}" text-anchor="middle">Haul road · ${fmtU('len', g.L, 0)} one way</text>
-    <text class="lbl-sm" x="${mid.x}" y="${Math.max(86, Math.min(mid.y, g.y0, g.yEnd) - 46)}" text-anchor="middle">${fmt('len', rise, 0)} ${unit('len')} up, ${fmt('len', fall, 0)} ${unit('len')} down when loaded (height exaggerated)</text>
-    <text class="lbl" x="${dx - 10}" y="${g.yEnd - 62}" text-anchor="middle">Dump</text>
-    <text class="lbl-sm" x="34" y="${g.y0 - 128}" text-anchor="start">${esc(mat ? mat.name : 'Material')}</text>`;
+  if (!units.length) ex = `<g class="hot slot" data-pop="add-loader" tabindex="0" role="button" aria-label="Add an excavator" transform="translate(${EX_X},${y0})"><rect x="-40" y="-70" width="80" height="70" rx="10"/><text x="0" y="-30" text-anchor="middle">+ Excavator</text></g>`;
+  // the truck line: first truck under the bucket, the rest queued behind it
+  const line = [];
+  st.trucks.forEach((t, i) => { for (let k = 0; k < (+t.count || 0); k++) line.push(i); });
+  const qStart = SPOT_X + 92, slotW = 70;
+  const room = W - 24 - slotW - qStart;
+  const sp = line.length > 1 ? Math.min(84, room / (line.length - 1)) : 84;
+  const showLbl = sp >= 46;
+  let trucks = '';
+  line.forEach((i, k) => {
+    const m = byId(TRUCKS, st.trucks[i].modelId), sc = clamp(Math.sqrt(m.ratedPayloadKg / 90000), 0.72, 1.1);
+    const x = k === 0 ? SPOT_X : qStart + (k - 1) * sp;
+    const dir = k === 0 ? 1 : -1;
+    trucks += `<g class="hot truck" data-pop="one:${i}" tabindex="0" role="button" aria-label="Truck ${k + 1}: ${esc(m.name)}" transform="translate(${x.toFixed(1)},${y0})">
+      <g transform="scale(${dir * sc},${sc})">${truckSVG(m, truckColor(i))}</g>
+      ${showLbl || k === 0 ? `<text class="lbl-xs" x="0" y="15" text-anchor="middle">${esc(shortName(m))}</text>` : ''}
+      <g class="rm-one" data-dec="${i}" role="button" tabindex="0" aria-label="Remove this ${esc(m.name)}" transform="translate(${(14 * sc).toFixed(1)},${(-46 * sc).toFixed(1)})"><circle r="8.5"/><path d="M-3,-3 L3,3 M3,-3 L-3,3"/></g>
+    </g>`;
+    if (k === 0) trucks += `<path class="tb-load" d="M${SPOT_X - 33 * sc},${y0 - 30 * sc} Q${SPOT_X - 8 * sc},${y0 - 40 * sc} ${SPOT_X + 16 * sc},${y0 - 30 * sc} Z" style="pointer-events:none"/>`;
+  });
+  const slotX = line.length === 0 ? SPOT_X : line.length === 1 ? qStart : qStart + (line.length - 2) * sp + Math.max(60, sp);
+  const slot = `<g class="hot slot" data-pop="add-truck" tabindex="0" role="button" aria-label="Add a truck to the line" transform="translate(${Math.min(slotX, W - slotW / 2 - 10).toFixed(1)},${y0})"><rect x="-32" y="-42" width="64" height="42" rx="8"/><text x="0" y="-17" text-anchor="middle">+ Truck</text></g>`;
+  const N = line.length;
   svg.innerHTML = `
     <defs><linearGradient id="sky" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--sky-1)"/><stop offset="1" stop-color="var(--sky-2)"/></linearGradient></defs>
-    <rect width="${g.W}" height="${g.H}" fill="url(#sky)"/>
-    <path d="${ground}" class="ground"/>
+    <rect width="${W}" height="${H}" fill="url(#sky)"/>
+    <rect x="0" y="${y0}" width="${W}" height="${H - y0}" class="ground"/>
     <path d="${face}" class="hot face" data-pop="material" tabindex="0" role="button" aria-label="Change material"/>
-    <path d="${pile}" class="hot pile" data-pop="road" tabindex="-1"/>
-    <path d="${road}" class="road"/>
-    <path d="${road}" class="road-dash"/>
-    <path d="${road}" class="hot road-hit" data-pop="road" tabindex="0" role="button" aria-label="Change haul road"/>
-    ${labels}
-    ${ex}
-    <g id="truck-layer"></g>
-    <g id="status-layer"></g>
-    ${hint}`;
-  startSim(shown.length, units);
+    <text class="lbl-sm" x="12" y="${y0 - 128}">${esc(mat ? mat.name : 'Material')}</text>
+    <text class="lbl" x="${qStart - 20}" y="34">Truck line · ${N} truck${N === 1 ? '' : 's'}</text>
+    <text class="lbl-sm" x="${qStart - 20}" y="52">${esc(lineSummary(st))}</text>
+    <text class="lbl-sm" x="${qStart - 20}" y="70">Tap a truck to change it, × to take it out, + to add one.</text>
+    ${ex}${trucks}${slot}`;
+  buildRoadStrip();
+}
+function lineSummary(st) {
+  const parts = st.trucks.filter(t => +t.count > 0).map(t => `${+t.count} × ${byId(TRUCKS, t.modelId).name}`);
+  return parts.length ? parts.join(' + ') : 'No trucks yet';
 }
 
-// ------------------------------------------------------------------ discrete-event animation
-function startSim(rowsShown, units) {
-  const trucks = [];
-  const order = [];
-  R.trucks.forEach((t, i) => { for (let k = 0; k < t.n; k++) order.push(i); });
-  // interleave types so mixed fleets spread out
-  order.sort((a, b) => a - b);
-  const N = order.length;
-  const ctAvg = N ? R.trucks.reduce((s, t) => s + t.n * t.ct, 0) / N : 600;
-  order.forEach((type, k) => trucks.push({ type, state: 'park', left: k * ctAvg / Math.max(1, N), unit: -1, d: 0, load: 0, from: null }));
-  sim = { t: 0, trucks, units: units.map(u => ({ j: u.j, busy: -1, idle: 0 })), queue: [], rowsShown };
-  // warm up so the picture starts in a steady state
-  const warm = Math.max(...R.trucks.map(t => t.ct)) * 2.5;
-  for (let s = 0; s < warm; s += 2) step(2);
-  sim.t = 0; sim.units.forEach(u => { u.idle = 0; });
-  const layer = $('#truck-layer');
-  layer.innerHTML = trucks.map((tr, k) => {
-    const T = R.trucks[tr.type], sc = clamp(Math.sqrt(T.truck.ratedPayloadKg / 90000), 0.72, 1.1);
-    const stateIdx = activeTrucks()[tr.type];
-    return `<g class="hot truck" data-pop="truck:${stateIdx}" id="tr-${k}" tabindex="-1" aria-label="${esc(T.truck.name)}"><g class="tr-inner" data-sc="${sc}">${truckSVG(T.truck, truckColor(stateIdx))}</g></g>`;
-  }).join('');
-  sim.els = trucks.map((tr, k) => {
-    const el = document.getElementById(`tr-${k}`);
-    return { el, inner: el.firstElementChild, body: el.querySelector('.tb'), load: el.querySelector('.tb-load') };
-  });
-  sim.exEls = [0, 1, 2].map(k => document.getElementById(`ex-${k}`)).map(e => e && ({ up: e.querySelector('.ex-up'), arm: e.querySelector('.ex-arm'), bl: e.querySelector('.ex-bload') }));
-  draw();
-}
-
-function freeUnitFor(type) {
-  let best = -1, bt = Infinity;
-  sim.units.forEach((u, k) => { if (u.busy < 0) { const lt = R.trucks[type].pairs[u.j].loadTimeS; if (lt < bt) { bt = lt; best = k; } } });
-  return best;
-}
-function assign(ti, k) {
-  const tr = sim.trucks[ti]; tr.unit = k; sim.units[k].busy = ti; tr.state = 'spot'; tr.left = R.trucks[tr.type].spotS; tr.dur = tr.left;
-}
-function step(dt) {
-  sim.t += dt;
-  sim.units.forEach(u => { if (u.busy < 0) u.idle += dt; });
-  sim.trucks.forEach((tr, ti) => {
-    if (tr.state === 'queue') return;
-    tr.left -= dt;
-    let guard = 0;
-    while (tr.left <= 0 && guard++ < 6) {
-      const T = R.trucks[tr.type];
-      const over = -tr.left;
-      if (tr.state === 'park' || tr.state === 'return') {
-        const k = freeUnitFor(tr.type);
-        if (k >= 0) { assign(ti, k); tr.left -= over; } else { tr.state = 'queue'; sim.queue.push(ti); tr.left = 0; break; }
-      } else if (tr.state === 'spot') {
-        tr.state = 'loading'; tr.dur = T.pairs[sim.units[tr.unit].j].loadTimeS; tr.left = tr.dur - over;
-      } else if (tr.state === 'loading') {
-        const k = tr.unit; sim.units[k].busy = -1; tr.unit = -1;
-        tr.state = 'haul'; tr.dur = T.haul.t; tr.left = tr.dur - over;
-        if (sim.queue.length) assign(sim.queue.shift(), k);
-      } else if (tr.state === 'haul') {
-        tr.state = 'dump'; tr.dur = T.dumpS; tr.left = tr.dur - over;
-      } else if (tr.state === 'dump') {
-        tr.state = 'return'; tr.dur = T.ret.t; tr.left = tr.dur - over;
-      }
-    }
-  });
-}
-
-function setTruck(e, x, y, ang, dir, sc, tilt, loadFrac) {
-  e.el.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})`);
-  e.inner.setAttribute('transform', `scale(${(dir * sc).toFixed(3)},${sc.toFixed(3)})`);
-  const [px, py] = e.body.dataset.pivot.split(',').map(Number);
-  e.body.setAttribute('transform', tilt ? `rotate(${-tilt} ${px} ${py})` : '');
-  e.load.setAttribute('transform', `translate(0,-30) scale(1,${clamp(loadFrac, 0, 1).toFixed(3)}) translate(0,30)`);
-  e.load.style.opacity = loadFrac > 0.02 ? 1 : 0;
-}
-
-function draw() {
-  if (!sim || !geo) return;
-  const g = geo;
-  const exState = [null, null, null];
-  const qPos = new Map(sim.queue.map((ti, k) => [ti, k]));
-  sim.trucks.forEach((tr, k) => {
-    const e = sim.els[k]; if (!e) return;
-    const T = R.trucks[tr.type];
-    const sc = +e.inner.dataset.sc;
-    const row = tr.unit >= 0 ? ROW[Math.min(tr.unit, 2)] : ROW[0];
-    const spot = { x: SPOT_X + Math.min(tr.unit, 2) * 6, y: g.y0 + row.dy };
-    const prog = tr.dur ? clamp(1 - tr.left / tr.dur, 0, 1) : 1;
-    e.el.style.display = '';
-    if (tr.state === 'park') { e.el.style.display = 'none'; return; }
-    if (tr.state === 'queue') {
-      const q = qPos.get(k) ?? 0;
-      const qd = clamp((12 + q * 54 * sc) / (g.X1 - g.X0) * g.L, 0, g.L * 0.6); const p = g.pt(qd); setTruck(e, p.x + 20, p.y - 7, g.angAt(qd), -1, sc, 0, 0);
-      e.el.classList.add('waiting'); return;
-    }
-    e.el.classList.remove('waiting');
-    if (tr.state === 'spot') {
-      const p = g.pt(10);
-      const x = p.x + (spot.x - p.x) * prog, y = p.y + (spot.y - p.y) * prog;
-      setTruck(e, x, y, 0, prog < 0.6 ? -1 : 1, sc * (1 - (1 - row.s) * prog), 0, 0); return;
-    }
-    if (tr.state === 'loading') {
-      const pair = T.pairs[sim.units[tr.unit].j];
-      const passes = Math.max(1, Math.round(pair.n));
-      const passT = tr.dur / passes;
-      const done = Math.floor((tr.dur - tr.left) / passT);
-      const inPass = ((tr.dur - tr.left) % passT) / passT;
-      const frac = (done + (inPass > 0.75 ? 1 : 0)) / passes;
-      setTruck(e, spot.x, spot.y, 0, 1, sc * row.s, 0, frac);
-      if (tr.unit < 3) exState[tr.unit] = { inPass };
-      return;
-    }
-    if (tr.state === 'haul') {
-      const d = dAtTime(g.maps[tr.type].haul, tr.dur - tr.left);
-      const p = g.pt(d); setTruck(e, p.x, p.y, g.angAt(d), 1, sc, 0, 1); return;
-    }
-    if (tr.state === 'dump') {
-      const x = g.X1 + 22, tilt = Math.sin(Math.PI * prog) * 48;
-      setTruck(e, x, g.yEnd, 0, 1, sc, tilt, prog < 0.55 ? 1 : 0); return;
-    }
-    if (tr.state === 'return') {
-      const d = g.L - dAtTime(g.maps[tr.type].ret, tr.dur - tr.left);
-      const p = g.pt(d); setTruck(e, p.x, p.y - 7, g.angAt(d), -1, sc * 0.96, 0, 0);
-    }
-  });
-  // excavator swing: dig facing the face (left), swing round and dump over the truck (right)
-  sim.exEls.forEach((x, k) => {
-    if (!x) return;
-    const s = exState[k];
-    let face = -1, arm = 0, bl = 0;
-    if (s) {
-      const p = s.inPass;
-      if (p < 0.35) { face = -1; arm = Math.sin(p / 0.35 * Math.PI) * 10; bl = p > 0.2 ? 1 : 0; }
-      else if (p < 0.55) { face = -1 + 2 * (p - 0.35) / 0.2; bl = 1; }
-      else if (p < 0.75) { face = 1; arm = -8; bl = p < 0.7 ? 1 : 0; }
-      else { face = 1 - 2 * (p - 0.75) / 0.25; }
-    }
-    x.up.setAttribute('transform', `scale(${face.toFixed(3)},1)`);
-    x.arm.setAttribute('transform', `rotate(${arm.toFixed(1)} 14 -32)`);
-    x.bl.style.opacity = bl;
-  });
-  // status text
-  const busy = sim.units.filter(u => u.busy >= 0 && sim.trucks[u.busy].state === 'loading').length;
-  const q = sim.queue.length;
-  const clock = new Date(sim.t * 1000).toISOString().substring(11, 19);
-  const sl = $('#status-layer');
-  if (sl) sl.innerHTML = `<text class="lbl-sm" x="12" y="22">Mine clock ${clock} · ${speed === 60 ? '1 s = 1 min' : speed === 30 ? '1 s = 30 s' : '1 s = 2 min'}</text>
-    <text class="lbl-sm ${q ? 'warn' : ''}" x="12" y="40">${q ? `${q} truck${q > 1 ? 's' : ''} waiting at the excavator` : busy ? 'Excavator loading' : 'Excavator waiting for a truck'}</text>`;
-}
-
-function frame(ts) {
-  const dtReal = lastTs ? Math.min(0.1, (ts - lastTs) / 1000) : 0; lastTs = ts;
-  const panel = $('#tab-visual');
-  if (sim && playing && panel && panel.classList.contains('active') && !document.hidden) {
-    let dt = dtReal * speed;
-    while (dt > 0) { const s = Math.min(dt, 1); step(s); dt -= s; }
-    draw();
-  }
-  requestAnimationFrame(frame);
+function buildRoadStrip() {
+  const svg = $('#road-strip'); if (!svg || !R || !R.segs || !R.segs.length) return;
+  const W = sceneWidth(), H = 92, X0 = 70, X1 = W - 70, yT = 30, yB = 74;
+  const segs = R.segs; const cum = [0]; segs.forEach(s => cum.push(cum.at(-1) + s.len));
+  const zs = [segs[0].z0, ...segs.map(s => s.z1)]; const L = cum.at(-1);
+  let zmin = Math.min(...zs), zmax = Math.max(...zs); if (zmax - zmin < 30) { const m = (zmax + zmin) / 2; zmin = m - 15; zmax = m + 15; }
+  const P = cum.map((d, k) => [X0 + d / L * (X1 - X0), yB - (zs[k] - zmin) / (zmax - zmin) * (yB - yT)]);
+  const path = P.map((p, k) => `${k ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+  const rise = segs.reduce((s, x) => s + Math.max(0, x.z1 - x.z0), 0), fall = segs.reduce((s, x) => s + Math.max(0, x.z0 - x.z1), 0);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = `<g class="hot" data-pop="road" tabindex="0" role="button" aria-label="Change haul road">
+    <rect width="${W}" height="${H}" class="strip-bg"/>
+    <path d="${path} L${X1},${H} L${X0},${H} Z" class="ground"/>
+    <path d="${path}" class="road thin"/>
+    <circle cx="${P[0][0]}" cy="${P[0][1]}" r="4" class="dot"/><circle cx="${P.at(-1)[0]}" cy="${P.at(-1)[1]}" r="4" class="dot"/>
+    <text class="lbl-xs" x="${X0 - 8}" y="${P[0][1] + 4}" text-anchor="end">Load</text>
+    <text class="lbl-xs" x="${X1 + 8}" y="${P.at(-1)[1] + 4}">Dump</text>
+    <text class="lbl-sm" x="12" y="18">Haul road · ${fmtU('len', L, 0)} one way · ${fmt('len', rise, 0)} ${unit('len')} up, ${fmt('len', fall, 0)} ${unit('len')} down when loaded · ${esc(byId(WEATHER, api.state().site.weatherId)?.name || '')} · tap to change</text>
+  </g>`;
 }
 
 // ------------------------------------------------------------------ fleet bar
@@ -437,13 +265,15 @@ function renderPop() {
       ${slider(`loaders.${i}.fillOverride`, l.fillOverride === '' ? '' : +l.fillOverride, st.material.fill, 50, 120, 'Bucket fill factor', `How full each bucket really is compared with its rated (heaped) size. Typical for ${esc(byId(MATERIALS, st.materialId)?.name || 'this material')}: ${pct(st.material.fill)} %. Sticky or blocky material fills less; loose, moist soil can fill over 100 %.`)}
       <label>Cycle time override <span class="u">s per bucket</span><input type="number" step="0.5" data-bind="loaders.${i}.cycleOverrideS" placeholder="auto"></label>
       <div class="pop-actions"><button class="btn ghost danger" data-remove="loaders.${i}">Remove this excavator</button></div>`;
-  } else if (kind === 'truck') {
+  } else if (kind === 'truck' || kind === 'one') {
     const t = st.trucks[i]; if (!t) return closePop();
     const m = byId(TRUCKS, t.modelId);
-    title.textContent = 'Trucks';
+    const one = kind === 'one';
+    title.textContent = one ? `Truck: ${m.name}` : `Trucks: ${m.name}`;
     body.innerHTML = `
-      <h4>Model</h4><div class="mcards">${TRUCKS.map(x => modelCard(x, x.id === t.modelId, 'truck', truckColor(i))).join('')}</div>
-      ${stepper(`trucks.${i}.count`, +t.count || 0, `How many ${esc(m.name)}`)}
+      <h4>${one ? 'Change this truck to' : 'Model for all of these trucks'}</h4><div class="mcards">${TRUCKS.map(x => modelCard(x, x.id === t.modelId, one ? 'one-truck' : 'truck', truckColor(i))).join('')}</div>
+      ${one ? `<h4>Settings for every ${esc(m.name)} in the line</h4>` : ''}
+      ${stepper(`trucks.${i}.count`, +t.count || 0, `Number of ${esc(m.name)} in the line`)}
       ${slider(`trucks.${i}.bodyFillPct`, t.bodyFillPct === '' || t.bodyFillPct == null ? '' : +t.bodyFillPct / 100, 1, 50, 110, 'Body fill factor', `How much of the truck body's rated heaped volume (${fmtU('vol', m.heapedM3, 1)}, SAE 2:1) you actually use. 100 % = fully heaped. Lower it for sticky or blocky material, carry-back, or if operators keep loads low to avoid spillage.`, true)}
       <div class="grid g2">
         <label>Rated payload <span class="u">(${unit('kg')})</span><input type="number" step="100" data-bind="trucks.${i}.payloadKg" data-q="kg" placeholder="${fmt('kg', m.ratedPayloadKg, 0).replace(/,/g, '')}"></label>
@@ -451,7 +281,7 @@ function renderPop() {
         <label>Time to position at the excavator <span class="u">min</span><input type="number" step="0.05" data-bind="trucks.${i}.spotMin" placeholder="${m.defaults.spotMin}"></label>
         <label>Time to turn and dump <span class="u">min</span><input type="number" step="0.05" data-bind="trucks.${i}.dumpMin" placeholder="${m.defaults.dumpMin}"></label>
       </div>
-      <div class="pop-actions"><button class="btn ghost danger" data-remove="trucks.${i}">Remove these trucks</button></div>`;
+      <div class="pop-actions">${one ? `<button class="btn ghost danger" data-dec="${i}">Take this truck out of the line</button>` : `<button class="btn ghost danger" data-remove="trucks.${i}">Remove all ${esc(m.name)}</button>`}</div>`;
   } else if (kind === 'add-truck' || kind === 'add-loader') {
     const isT = kind === 'add-truck';
     title.textContent = isT ? 'Add trucks' : 'Add an excavator';
@@ -495,7 +325,7 @@ function renderPop() {
   api.renderBound();
   if (!d.open) { d.showModal(); }
 }
-function openPop(ctx) { popCtx = ctx; renderPop(); const h = document.querySelector('.hint'); if (h) h.remove(); try { localStorage.setItem('mfc-hinted', '1'); } catch (e) { /* ignore */ } }
+function openPop(ctx) { popCtx = ctx; renderPop(); }
 function closePop() { popCtx = null; const d = $('#pop'); if (d.open) d.close(); }
 
 // ------------------------------------------------------------------ events
@@ -504,6 +334,8 @@ function wire() {
   document.addEventListener('click', e => {
     const inVisual = e.target.closest('#tab-visual, #pop');
     if (!inVisual) return;
+    const dec = e.target.closest('[data-dec]');
+    if (dec) { decTruck(+dec.dataset.dec); return; }
     const pop = e.target.closest('[data-pop]');
     if (pop) { openPop(pop.dataset.pop); return; }
     const stp = e.target.closest('[data-step]');
@@ -516,11 +348,13 @@ function wire() {
       const [kind, id] = pick.dataset.pick.split(':'); const st = api.state();
       const [, i] = popCtx ? popCtx.split(':') : [];
       if (kind === 'truck') { st.trucks[+i].modelId = id; }
+      else if (kind === 'one-truck') { const j = moveOne(+i, id); popCtx = j >= 0 ? `one:${j}` : null; }
       else if (kind === 'loader') { st.loaders[+i].modelId = id; api.normaliseRows(); }
       else if (kind === 'new-truck') {
         const ex = st.trucks.findIndex(t => t.modelId === id);
-        if (ex >= 0) { st.trucks[ex].count = (+st.trucks[ex].count || 0) + 1; popCtx = `truck:${ex}`; }
-        else { st.trucks.push({ ...api.newTruck(), modelId: id, count: 2 }); popCtx = `truck:${st.trucks.length - 1}`; }
+        if (ex >= 0) st.trucks[ex].count = (+st.trucks[ex].count || 0) + 1;
+        else st.trucks.push({ ...api.newTruck(), modelId: id, count: 1 });
+        closePop(); afterChange(); return;
       } else if (kind === 'new-loader') {
         const m = byId(LOADERS, id);
         st.loaders.push({ ...api.newLoader(), modelId: id, bucketId: m.defaultBucket, count: 1 }); popCtx = `loader:${st.loaders.length - 1}`;
@@ -542,11 +376,11 @@ function wire() {
       const idx = activeTrucks(); const k = diff > 0 ? idx[0] : idx.reduce((a, b) => ((+st.trucks[b].count) > (+st.trucks[a].count) ? b : a), idx[0]);
       st.trucks[k].count = Math.max(1, (+st.trucks[k].count || 0) + diff); afterChange(); return;
     }
-    if (e.target.closest('#v-play')) { playing = !playing; $('#v-play').textContent = playing ? 'Pause' : 'Play'; return; }
     if (e.target.closest('#v-detail')) { document.querySelector('.tab[data-tab="calc"]').click(); return; }
   });
   document.addEventListener('keydown', e => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#scene [data-pop]')) { e.preventDefault(); openPop(e.target.dataset.pop); }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#scene [data-pop], #road-strip [data-pop]')) { e.preventDefault(); openPop(e.target.dataset.pop); }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#scene [data-dec]')) { e.preventDefault(); decTruck(+e.target.dataset.dec); }
   });
   document.addEventListener('input', e => {
     const s = e.target.dataset && e.target.dataset.slide; if (!s) return;
@@ -564,8 +398,23 @@ function wire() {
   $('#pop-close').onclick = closePop;
   $('#pop').addEventListener('click', e => { if (e.target.id === 'pop') closePop(); });
   $('#pop').addEventListener('close', () => { popCtx = null; });
-  $('#v-speed').onchange = e => { speed = +e.target.value; };
-  $('#v-play').textContent = playing ? 'Pause' : 'Play';
+}
+function decTruck(i) {
+  const st = api.state(); const t = st.trucks[i]; if (!t) return;
+  t.count = Math.max(0, (+t.count || 0) - 1);
+  if (t.count === 0) st.trucks.splice(i, 1);
+  closePop(); afterChange();
+}
+// move one truck of type i to model id; returns the index of the type it ended up in
+function moveOne(i, id) {
+  const st = api.state(); const t = st.trucks[i]; if (!t || t.modelId === id) return i;
+  t.count = Math.max(0, (+t.count || 0) - 1);
+  let j = st.trucks.findIndex((x, k) => k !== i && x.modelId === id);
+  if (j >= 0) st.trucks[j].count = (+st.trucks[j].count || 0) + 1;
+  else { st.trucks.splice(i, 0, { ...api.newTruck(), modelId: id, count: 1 }); j = i; }
+  const ti = st.trucks.indexOf(t);
+  if (t.count === 0) { st.trucks.splice(ti, 1); if (j > ti) j--; }
+  return j;
 }
 function afterChange(rerenderPop) {
   api.renderRows();
