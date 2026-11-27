@@ -1,18 +1,18 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271930';
-import { siteConditions, hToClock } from './conditions.js?v=202611271930';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611271930';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611271930';
-import { renderEquipment, renderMethod } from './docs.js?v=202611271930';
-import { initVisual, updateVisual } from './visual.js?v=202611271930';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611271930';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271959';
+import { siteConditions, hToClock } from './conditions.js?v=202611271959';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611271959';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611271959';
+import { renderEquipment, renderMethod } from './docs.js?v=202611271959';
+import { initVisual, updateVisual } from './visual.js?v=202611271959';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611271959';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
   site: { date: '', latitude: 49.7, longitude: -114.9, utcOffsetStd: -7, dst: true, tempC: '', skyId: 'clear', roadId: 'firm', surfaceId: 'dry', gradingId: 'shift', waterTruck: true,
-    rrOverride: '', tractionOverride: '', speedLimitKmh: 50, downhillLimitKmh: 35, downhillGradePct: -3 },
+    rrOverride: '', tractionOverride: '', speedLimitKmh: 70, downhillLimitKmh: 35, downhillGradePct: -3 },
   materialId: 'till',
   material: { ...pickMat('till'), frozen: false },
-  loaders: [{ modelId: 'cat390fl', bucketId: 'sd46', count: 1, jobCond: 'C', setup: 'bench', benchHeightM: '', swingDeg: '', conditionId: 'good', availabilityPct: '', cycleOverrideS: '', fillOverride: '' }],
+  loaders: [{ modelId: 'cat390fl', bucketId: 'sd46', count: 1, jobCond: 'C', setup: 'bench', loadingSide: 'single', benchHeightM: '', swingDeg: '', conditionId: 'good', availabilityPct: '', cycleOverrideS: '', fillOverride: '' }],
   trucks: [{ modelId: 'cat745', count: 6, conditionId: 'good', availabilityPct: '', payloadKg: '', bodyFillPct: '', spotMin: '', dumpMin: '' }],
   target: { volume: '', basis: 'auto' },
   profile: { segmentM: 100, loadAreaM: 50, dumpAreaM: 50, reverse: false, points: null, name: '' },
@@ -39,13 +39,16 @@ function migrate(saved) {
     ops: { ...d.ops, ...(saved.ops || {}), standby: { ...d.ops.standby, ...((saved.ops || {}).standby || {}) }, assumptions: { ...d.ops.assumptions, ...((saved.ops || {}).assumptions || {}) } },
     profile: { ...d.profile, ...(saved.profile || {}) }, target: { ...d.target, ...(saved.target || {}) },
   });
-  (st.loaders || []).forEach(l => { if (!l.setup) { l.setup = 'bench'; if (+l.swingDeg === 90) l.swingDeg = ''; } if (+l.benchHeightM === 4.5 && !l.benchSet) l.benchHeightM = ''; });
+  (st.loaders || []).forEach(l => { if (!l.loadingSide) l.loadingSide = 'single'; if (!l.setup) { l.setup = 'bench'; if (+l.swingDeg === 90) l.swingDeg = ''; } if (+l.benchHeightM === 4.5 && !l.benchSet) l.benchHeightM = ''; });
   if (st.material.digTm3 == null && st.material.looseTm3 != null) { // v1: loose density + swell
     const m = byId(MATERIALS, st.materialId);
     if (m && m.blasted) Object.assign(st.material, { digTm3: +st.material.looseTm3, swellPct: 0, bankTm3: m.bankTm3 });
     else st.material.digTm3 = +(st.material.looseTm3 * (1 + (+st.material.swellPct || 0) / 100)).toFixed(3);
   }
   delete st.material.looseTm3;
+  // 2026-11-27 new defaults: till 2.1 t/m³ in-situ, swell 30 %; site speed limit 70 km/h (old untouched defaults only)
+  if (st.materialId === 'till' && +st.material.digTm3 === 2.2 && +st.material.swellPct === 22) Object.assign(st.material, { digTm3: 2.1, swellPct: 30 });
+  if (+st.site.speedLimitKmh === 50) st.site.speedLimitKmh = 70;
   if (st.site.weatherId && !(saved.site || {}).surfaceId) st.site.surfaceId = st.site.weatherId;
   delete st.site.weatherId; delete st.site.altitudeM;
   if (saved.ops && saved.ops.shiftH != null && !saved.ops.shiftStart) { st.ops.shiftEnd = hToClock(7 + +saved.ops.shiftH + st.ops.nonProdMin / 60); if (+saved.ops.jobEffMin === 50) st.ops.jobEffMin = 55; }
@@ -62,7 +65,8 @@ function matDerived(m = state.material) {
 }
 function setupTag(l) {
   const f = setupFactor(l); if (!f.setup) return '';
-  return `${esc(f.setup.short)}${f.setup.id === 'bench' ? ` ${fmtU('len', +l.benchHeightM || 0, 1)} (dig depth ${(f.ratio * 100).toFixed(0)} % of ${fmtU('len', l.digDepthM, 2)} max)` : ''} · swing ${swingOf(l)}° · setup factor <b>×${f.factor.toFixed(2)}</b> <small>(Komatsu ${esc(f.row.name)} / ${esc(f.col.name.split(' (')[0])})</small>`;
+  const side = byId(LOADING_SIDES, l.loadingSide || 'single');
+  return `${side ? `${esc(side.short)} loading · ` : ''}${esc(f.setup.short)}${f.setup.id === 'bench' ? ` ${fmtU('len', +l.benchHeightM || 0, 1)} (dig depth ${(f.ratio * 100).toFixed(0)} % of ${fmtU('len', l.digDepthM, 2)} max)` : ''} · swing ${swingOf(l)}° · setup factor <b>×${f.factor.toFixed(2)}</b> <small>(Komatsu ${esc(f.row.name)} / ${esc(f.col.name.split(' (')[0])})</small>`;
 }
 // Target volume → tonnes → working days (at the production rate of the current inputs)
 const BASES = [{ id: 'auto', name: 'Auto (LCM for blasted rock / rehandle, BCM otherwise)' }, { id: 'bcm', name: 'Bank volume dug (BCM)' }, { id: 'lcm', name: 'Loose volume (LCM, as in the truck / at the dump)' }];
@@ -178,6 +182,7 @@ function renderRows() {
       <label class="span2">Bucket<select data-bind="loaders.${i}.bucketId">${m.buckets.map(b => `<option value="${b.id}" ${b.id === l.bucketId ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
       <label>Number of units<input type="number" min="0" step="1" data-bind="loaders.${i}.count"></label>
       <label class="span2">Job condition<select data-bind="loaders.${i}.jobCond">${opt(JOB_CONDITIONS, l.jobCond)}</select></label>
+      <label class="span2">Truck loading<select data-bind="loaders.${i}.loadingSide">${opt(LOADING_SIDES, l.loadingSide || 'single')}</select></label>
       <label class="span2">Digging face setup<select data-bind="loaders.${i}.setup">${opt(SETUPS, l.setup || 'bench')}</select></label>
       ${(l.setup || 'bench') === 'bench' ? `<label>Bench height <span class="u" data-u="len">${unit('len')}</span><input type="number" step="0.5" min="0" data-bind="loaders.${i}.benchHeightM" data-q="len" placeholder="${(() => { const b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0]; return b.stickM ? `= stick ${round(toDisp('len', b.stickM), 2)}` : ''; })()}"></label>` : ''}
       <label>Swing angle <span class="u">°</span><input type="number" step="5" data-bind="loaders.${i}.swingDeg" placeholder="${(byId(SETUPS, l.setup || 'bench') || { swingDeg: 90 }).swingDeg}"></label>
@@ -217,7 +222,7 @@ function toEngineInput() {
     material: { looseTm3: looseOf(s.material), fill: s.material.fill, frozen: s.material.frozen },
     loaders: s.loaders.map(l => {
       const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
-      return { modelId: l.modelId, count: +l.count || 0, bucketM3: b.m3, loadHeightM: b.loadHeightM, digDepthM: b.digDepthM, stickM: b.stickM, setup: l.setup || 'bench', benchHeightM: l.benchHeightM === '' || l.benchHeightM == null ? (b.stickM || 0) : +l.benchHeightM, jobCond: l.jobCond, swingDeg: l.swingDeg === '' || l.swingDeg == null ? null : +l.swingDeg,
+      return { modelId: l.modelId, count: +l.count || 0, bucketM3: b.m3, loadHeightM: b.loadHeightM, digDepthM: b.digDepthM, stickM: b.stickM, setup: l.setup || 'bench', loadingSide: l.loadingSide || 'single', benchHeightM: l.benchHeightM === '' || l.benchHeightM == null ? (b.stickM || 0) : +l.benchHeightM, jobCond: l.jobCond, swingDeg: l.swingDeg === '' || l.swingDeg == null ? null : +l.swingDeg,
         conditionId: l.conditionId, availability: l.availabilityPct === '' ? '' : +l.availabilityPct / 100, cycleOverrideS: l.cycleOverrideS || '', fillOverride: l.fillOverride || '' };
     }),
     trucks: s.trucks.map(t => ({ modelId: t.modelId, count: +t.count || 0, conditionId: t.conditionId, availability: t.availabilityPct === '' ? '' : +t.availabilityPct / 100,

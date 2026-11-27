@@ -279,7 +279,7 @@ export const MATERIALS = [
   { id: 'blasted', name: 'Blasted Rock', digTm3: 2.30, swellPct: 0, bankTm3: 2.99, fill: 0.85, blasted: true, src: 'Muck-pile density 2.3 t/m³ per user (already swollen by blasting, so no further swell into the truck). Solid rock before blast 2.99 t/m³ = 2.3 × 1.30 (30 % blast swell) — replace with site value. Fill factor: average blasted rock 75–90 % (CAT47 p.30-2 / MIME 333 Table 3.3).' },
   { id: 'overburden', name: 'Overburden', digTm3: 2.28, swellPct: 33, fill: 0.90, src: 'CAT47 p.30-6 "Decomposed rock 50 % rock / 50 % earth": bank 2 280, loose 1 720 kg/m³ (swell 33 %).' },
   { id: 'soil', name: 'Soil', digTm3: 2.02, swellPct: 26, fill: 1.00, src: 'CAT47 p.30-6 "Earth — wet excavated": bank 2 020, loose 1 600 kg/m³ (swell 26 %). Fill: moist loam 100–110 %.' },
-  { id: 'till', name: 'Till (glacial)', digTm3: 2.20, swellPct: 22, fill: 0.90, src: 'Typical glacial till in-situ ≈ 2.2 t/m³, swell 22 % (estimate — not in CAT table; nearest "Clay & gravel"). Fill: "Soil, boulders, roots" 80–100 %. Verify with site tests.' },
+  { id: 'till', name: 'Till (glacial)', digTm3: 2.10, swellPct: 30, fill: 0.90, src: 'Glacial till in-situ 2.1 t/m³, swell 30 % (site planning value set by the user 2026-11-27 — estimate — not in CAT table; nearest "Clay & gravel"). Fill: "Soil, boulders, roots" 80–100 %. Verify with site tests.' },
   { id: 'rehandle', name: 'Rehandle (blasted rock)', digTm3: 2.30, swellPct: 0, bankTm3: 2.99, fill: 0.90, blasted: true, rehandle: true, src: 'Blasted rock that has already been dumped once (stockpile / temporary dump) and is moved again: loose density 2.3 t/m³ per user, no further swell. Fill factor 0.9 (loosened, no digging out of the muck pile; Komatsu 15A-9 "well blasted rock" 0.90–0.95 for shovels) — estimate.' },
   { id: 'coal', name: 'Coal', digTm3: 1.75, swellPct: 35, fill: 0.95, src: 'Loose density 1.3 t/m³ per user; swell 35 % from CAT47 bituminous load factor 0.74 → in-situ ≈ 1.75 t/m³.' },
 ];
@@ -341,6 +341,14 @@ export const KOM_CYCLE_FACTOR = {
   f: { lt40: [0.7, 0.9, 1.1, 1.4], '40to75': [0.8, 1.0, 1.3, 1.6], gt75: [0.9, 1.1, 1.5, 1.8] },
   src: 'Komatsu Performance Handbook (MIME 333 copy) p.15A-10 "Conversion factor for excavator"; also reproduced in Molaei, Geimer & Kolu (2023), EC3 Heraklion, Table 4.',
 };
+// How trucks are positioned at the excavator. Single side: the excavator waits while each truck backs in (spot),
+// so spot is loader busy time (MIME 333 Ch.3 "shovel loading time" = spot + load). Double side: the next truck spots on
+// the other side while the current one is loaded, so the loader is busy only for the load (Burt & Caccetta 2007/2008).
+export const LOADING_SIDES = [
+  { id: 'single', name: 'Single side (excavator waits while each truck spots)', short: 'single-side', note: 'Trucks are loaded on one side only: the excavator waits while each truck turns and backs in, so the spot time counts as excavator time in the match factor and excavator capacity (MIME 333 "shovel loading time" = spot + load).' },
+  { id: 'double', name: 'Double side (next truck spots while one is loaded)', short: 'double-side', note: 'Trucks are loaded on both sides: the next truck spots while the current one is loaded, so the excavator is busy only for the loading passes (Burt & Caccetta). Needs room at the face for two trucks.' },
+];
+
 export const SETUPS = [
   { id: 'bench', name: 'On a bench above the truck (top loading)', short: 'On bench', swingDeg: 60, dumpCol: 'normal',
     note: 'Excavator digs the face below its tracks (digging depth ≈ bench height) and dumps down into a truck on the lower level: low lift, good view of the body, short swing. Bench ≈ truck rail height and not higher than the stick length (CAT; Terex O&K). Komatsu 3A-131: for backhoes the bench should not exceed the dump-body height for efficient loading.' },

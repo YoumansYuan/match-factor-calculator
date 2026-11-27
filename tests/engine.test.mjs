@@ -108,7 +108,7 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
 }
 // Materials: loose = dig-face / (1 + swell); blasted rock keeps 2.30 into the truck
 {
-  near('till loose density 2.20/1.22', looseOf(MATERIALS.find(m => m.id === 'till')), 2.2 / 1.22, 1e-9);
+  near('till loose density 2.10/1.30', looseOf(MATERIALS.find(m => m.id === 'till')), 2.1 / 1.3, 1e-9);
   near('blasted rock loose density', looseOf(MATERIALS.find(m => m.id === 'blasted')), 2.3, 1e-9);
 }
 // Grader maintenance on loose snow (firm road RR 2 → min 4.5 %): dedicated grader keeps 40 % of the penalty
@@ -130,6 +130,22 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
   const ops = { frozenCycleMult: 1.1 };
   near('bench cycle (swing 60°) = 32 s', loaderCycleS({ ...base, setup: 'bench', benchHeightM: 4.5 }, m390, ops, false), 32, 1e-9);
   near('floor cycle (swing 110°) = (32 + 2) × 1.1', loaderCycleS({ ...base, setup: 'floor' }, m390, ops, false), 37.4, 1e-9);
+}
+
+// Loading side: single-side counts spot as loader busy time (Excel / MIME 333), double-side does not (Burt & Caccetta)
+{
+  const mk = side => computeScenario({
+    site: { tempC: 10, roadId: 'firm', surfaceId: 'dry', rrOverride: 3, tractionOverride: 0.36, speedLimitKmh: 40, downhillLimitKmh: 30, downhillGradePct: -2 },
+    material: { looseTm3: 1.575, fill: 0.95 },
+    loaders: [{ modelId: 'cat390fl', count: 1, bucketM3: 5, loadHeightM: 9.1, jobCond: 'C', conditionId: 'good', availability: 1, cycleOverrideS: 30, loadingSide: side }],
+    trucks: [{ modelId: 'jd460p', count: 8, conditionId: 'good', availability: 1, bodyFill: 0.9, spotMin: 1.0, dumpMin: 1.067 }],
+    profile: { points: csv, segmentM: 250 },
+    ops: { shiftH: 11, shiftsPerDay: 1, daysPerYear: 365, jobEff: 1, utilization: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', bunching: 1, brakingDecel: 0.6, massFactor: 1.05, hotRetarderDeratePerC: 0.01, idleLF: 0.15 } });
+  const s1 = mk('single'), s2 = mk('double');
+  near('Excel scenario 1 cycle 23.83 min (same inputs)', s1.trucks[0].ct / 60, 23.83, 0.3);
+  near('single-side MF ≈ Excel 1.175', s1.mf, 1.175, 0.02);
+  near('double-side MF = 8 × 2.5 / cycle', s2.mf, 8 * 150 / s2.trucks[0].ct, 1e-9);
+  near('single-side loader capacity = load × 60 / 3.5 min', s1.prod.loaderCapTph, s1.trucks[0].loadT * 60 / 3.5, 0.5);
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');

@@ -33,8 +33,10 @@ mixed fleets and haul-profile CSV upload. Metric/Imperial toggle (state always S
   - JD 460 P-Tier rimpull & retarder curves are **generated** (η = 0.83 × 359 kW / v, stall cap 0.59 × GMW; retarder ≈ 550 kW at JD gear speeds) — method fitted on the digitised CAT 745C curve.
   - CAT 745 curves come from the **745C** charts (CAT Handbook Ed.47 p.1-29/1-30); specs from cat.com current 745.
   - 777E rimpull/retarder digitised from Handbook Ed.47 p.10-49/10-50 (embedded raster images, read by eye, power-checked).
-  - Till density (loose 1.8 t/m³, swell 22 %) is a typical value — user should replace with site data. Blasted rock 2.3 and coal 1.3 t/m³ loose were given by the user.
+  - Till density: in-situ 2.1 t/m³, swell 30 % (user's planning value 2026-11-27; replace with site data). Blasted rock 2.3 and coal 1.3 t/m³ loose were given by the user.
   - Machine-condition presets (availability / power factor / cycle multiplier) and weather RR/traction modifiers are planning estimates.
+- **Loading side** per loader (`loadingSide`, added 2026-11-27 after comparing with the user's old Excel): 'single' (default) = excavator waits while the truck spots, so loader busy time (MF + loader capacity) = spot + load, as in MIME 333 / the Excel; 'double' = load only (Burt & Caccetta). Truck cycle always includes spot. With the Excel's inputs the engine reproduces its cycle (23.8 min) and MF (1.175). The user no longer uses the Excel.
+- Site speed limit default 70 km/h (user: general site limit; truck top speed / rimpull limit the rest).
 - Match factor uses **Burt & Caccetta 2008 corrigendum eq.16** (the 2007 paper's §4 formula is wrong; corrected example = 0.928).
 - Fill factors: **bucket fill factor** per material (overridable per loader); **truck body fill factor** per truck type (`trucks[i].bodyFillPct`, default 100 % of SAE 2:1 heaped) — usable body volume = heaped × body fill, used for passes-by-volume and the volume cap on carried load (added 2026-11-27).
 - **Desktop only for now** (user 2026-11-27): don't spend effort on mobile layout for upcoming versions.
@@ -75,7 +77,7 @@ Tip: stage PDFs into the container and use `pdftotext -layout`; chart pages are 
 - Commit trailer used: `Co-Authored-By: Claude …` per session attribution instructions.
 
 ## Backlog / ideas the user mentioned or agreed to
-1. Compare results against the user's own Turnbull till-hauling Excel (not yet received) and align inputs/outputs.
+1. ~~Compare with the user's Excel~~ done 2026-11-27. User will tune the downhill speed limit themselves.
 2. Add Komatsu trucks/excavators (Komatsu handbook is on the drive).
 3. ~~In-browser profile drawing~~ done (editor with trace-over-image). Still possible: automatic colour-mask digitising of a chart image.
 4. Cost per tonne (MCS cost data from MIME 426 capstone is on the drive: `00 Capstone MIME-426…\01 MCS 成本资料…`).

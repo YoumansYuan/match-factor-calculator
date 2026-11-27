@@ -2,7 +2,7 @@
 // Methods follow MIME 333 Ch.3 (Mitri & Sasmito), the Caterpillar Performance Handbook Ed.47,
 // the Komatsu Specifications & Application Handbook Ed.32 and Burt & Caccetta (2007, corrigendum 2008).
 
-import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611271930';
+import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611271959';
 
 export const G = 9.81;
 const BETA = 0.268;  // kg fuel / kW·h (MIME 333 formula sheet)
@@ -324,7 +324,9 @@ export function computeScenario(input) {
     return { tIn, truck, cond, A, n: tIn.count, pairs, loadT, loadTimeS, haul, ret, spotS, dumpS, ct, fuelL, gmwLoaded, ctx };
   });
 
-  const lt = trucks.map(t => t.pairs.map(p => p.loadTimeS));
+  // loader busy time per truck: single-side loading → the loader waits while the truck spots, so spot counts;
+  // double-side loading → the next truck spots while the current one is loaded (Burt & Caccetta: load time only)
+  const lt = trucks.map(t => t.pairs.map((p, j) => p.loadTimeS + (loaders[j].loadingSide === 'single' ? t.spotS : 0)));
   const mfNominal = matchFactor(trucks.map(t => ({ n: t.n, ct: t.ct })), loaders.map(l => ({ n: l.count })), lt);
   const mfAvail = matchFactor(trucks.map(t => ({ n: t.n * t.A, ct: t.ct })), loaders.map(l => ({ n: l.count * l.A })), lt);
   const mf = ops.mfUseAvailability ? mfAvail : mfNominal;

@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271930';
-import { unit, fmt, fmtU, toDisp } from './units.js?v=202611271930';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271959';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611271959';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
@@ -116,6 +116,10 @@ Komatsu: dump 0.5–0.7 (favourable) / 1.0–1.3 (average) / 1.5–2.0 min (unfa
 <p>Queue and wait time are not included, consistent with the match factor definition (Morgan &amp; Peterson 1968).</p>
 
 <h3>5. Match factor</h3>
+<p>Truck loading time here is the time the excavator is busy with one truck. It depends on how trucks are loaded (set per excavator):</p>
+<div class="eq">single-side loading:  loading time = spot + passes × bucket cycle   (excavator waits while the truck backs in; MIME 333 "shovel loading time")
+double-side loading:  loading time = passes × bucket cycle          (next truck spots on the other side meanwhile; Burt &amp; Caccetta)
+The truck cycle time always includes spot. The same loading time sets the excavator capacity.</div>
 <div class="eq">homogeneous:  MF = (number of trucks × truck loading time) / (number of loaders × truck cycle time)
 heterogeneous (Burt &amp; Caccetta 2008 corrigendum, eq. 16):
    lt_j = Σ_i trucks_i × loading time_i,j          (time for loader type j to serve the whole truck fleet)

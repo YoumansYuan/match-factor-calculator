@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271930';
-import { hToClock } from './conditions.js?v=202611271930';
-import { byId } from './engine.js?v=202611271930';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271930';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271959';
+import { hToClock } from './conditions.js?v=202611271959';
+import { byId } from './engine.js?v=202611271959';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271959';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -345,6 +345,8 @@ function renderPop() {
       <h4>Where it stands</h4><div class="seg">${SETUPS.map(x => `<button class="${x.id === (l.setup || 'bench') ? 'sel' : ''}" data-setup="${i}:${x.id}">${esc(x.name)}</button>`).join('')}</div>
       ${(l.setup || 'bench') === 'bench' ? `<label>Bench height <span class="u">(${unit('len')}, blank = stick length, CAT recommendation)</span><input type="number" step="0.5" min="0" data-bind="loaders.${i}.benchHeightM" data-q="len" placeholder="${(() => { const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0]; return b.stickM ? `${fmt('len', b.stickM, 2)} (stick)` : ''; })()}"></label>` : ''}
       <p class="note" id="pop-live">${setupNote(i)}</p>
+      <h4>How trucks are loaded</h4><div class="seg">${LOADING_SIDES.map(x => `<button class="${x.id === (l.loadingSide || 'single') ? 'sel' : ''}" data-side="${i}:${x.id}">${esc(x.name)}</button>`).join('')}</div>
+      <p class="note">${esc((LOADING_SIDES.find(x => x.id === (l.loadingSide || 'single')) || LOADING_SIDES[0]).note)}</p>
       <div class="grid g2">
         <label>Bucket<select data-bind="loaders.${i}.bucketId">${m.buckets.map(b => `<option value="${b.id}" ${b.id === l.bucketId ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
         <label>Digging conditions<select data-bind="loaders.${i}.jobCond">${JOB_CONDITIONS.map(x => `<option value="${x.id}" ${x.id === l.jobCond ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
@@ -516,6 +518,8 @@ function wire() {
     if (mat) { api.setMaterial(mat.dataset.mat); afterChange(true); return; }
     const su = e.target.closest('[data-setup]');
     if (su) { const [i, id] = su.dataset.setup.split(':'); const l = api.state().loaders[+i]; l.setup = id; afterChange(true); return; }
+    const sd = e.target.closest('[data-side]');
+    if (sd) { const [i, id] = sd.dataset.side.split(':'); api.state().loaders[+i].loadingSide = id; afterChange(true); return; }
     const wx = e.target.closest('[data-sky]');
     if (wx) { const st = api.state(), sk = byId(SKY, wx.dataset.sky); st.site.skyId = sk.id; if (sk.surface) st.site.surfaceId = sk.surface; afterChange(true); return; }
     if (e.target.closest('[data-ped]')) { closePop(); api.editProfile(); return; }
