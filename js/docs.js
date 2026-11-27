@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272100';
-import { unit, fmt, fmtU, toDisp } from './units.js?v=202611272100';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272110';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611272110';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
@@ -146,6 +146,20 @@ target: tonnes = target volume × (bank density if BCM, loose density if LCM);  
    truck loads = tonnes split between truck types by their hourly haulage (n × availability × load / cycle) ÷ load per truck, rounded up
 trucks for MF = 1 ≈ trucks / MF;   trucks to deploy = that / mean availability   (MIME 333: required fleet = theoretical / availability)</div>
 <p><b>Date and location.</b> The work date sets a default air temperature (approximate monthly mean, editable) and the sunrise/sunset times at the site latitude/longitude (NOAA approximation, Mountain Time with daylight saving). The dark fraction is the share of all shift hours outside daylight. <b>Water truck rule:</b> mean temperature &gt; 3 °C — available; 0–3 °C — daytime only (half effect, night frost risk); ≤ 0 °C — not available (water freezes on the road). A dry road with no effective water truck raises dust: heavy dust reduces efficiency and caps haul speed; frozen ground raises about half as much dust. Rain or snow removes dust.</p>
+<h3>6b. Seasonal schedule (month-by-month weather)</h3>
+<p>Climate: Environment Canada station <b>Fording River Cominco</b> (climate ID 1152899, 1,585 m), at the Fording River operation. For every month the daily records 1970–2007 give the 10th, 50th and 90th percentile of: mean temperature, days with precipitation ≥ 0.2 mm, days with snowfall ≥ 0.2 cm and ≥ 5 cm, and days with snow on the ground. The default monthly temperature of the work date is the 1981–2010 normal of the same station.</p>
+<div class="eq">temperature at the road = station value − 0.006 °C/m × (mean haul-road elevation − 1,585 m)
+slider level L (−1 … +1):  value = median + (P90 − median) × L   (L ≥ 0, cautious: more snow/rain days, P10 temperature)
+                           value = median + (median − P10) × L   (L &lt; 0, optimistic)
+day types per month:  heavy snowfall (≥ 5 cm)   → sky Snowing, road Loose snow
+                      light snowfall            → sky Overcast, road Packed snow
+                      rain = precipitation days − snowfall days → sky Rain, road Wet
+                      dry with snow on the ground → sky Clear, road Packed snow
+                      dry                        → sky Clear, road Dry (dust / water-truck rule by temperature)
+tonnes per working day (month) = Σ day-type share × production of that day type (same fleet, road, shift and darkness for mid-month)
+working days = calendar days × working days per year ÷ 365;  finish = day the cumulative tonnes reach the target</div>
+<p>Snow and ice roads also cap the speed (packed snow 40, loose snow 30, ice 25 km/h — planning estimates, editable in the data file). Months are independent: the cautious end assumes every month is a 1-in-10 bad month, which together is rarer than 1 in 10.</p>
+
 <h3>7. Fuel and CO₂</h3>
 <div class="eq">fuel (L/h) = P × β × ρ / γ      β = 0.268 kg/kW·h, γ = 0.85 kg/L      (MIME 333 formula sheet)
 ρ (load factor) while hauling = wheel power / (drivetrain efficiency × available net power), from the simulation

@@ -102,7 +102,7 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
   near('truck util = 1 − 15 / 660', c.truckUtil, 1 - 15 / 660, 1e-9);
   near('July with water truck: no dust', c.dust, 0, 0);
   const w = siteConditions({ date: '2026-01-15', skyId: 'clear', surfaceId: 'dry', waterTruck: true }, { shiftStart: '07:00', shiftEnd: '19:00' });
-  near('January: water truck unavailable → frozen-ground dust 0.5', w.dust, 0.5, 0);
+  near('January: water truck unavailable → frozen-ground dust 0.4', w.dust, 0.4, 0);
   const f = siteConditions({ date: '2026-07-15', skyId: 'fog', surfaceId: 'wet' }, { shiftStart: '07:00', shiftEnd: '19:00' });
   near('fog visibility cap km/h', f.capKmh, 25, 0);
 }
@@ -146,6 +146,22 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
   near('single-side MF ≈ Excel 1.175', s1.mf, 1.175, 0.02);
   near('double-side MF = 8 × 2.5 / cycle', s2.mf, 8 * 150 / s2.trucks[0].ct, 1e-9);
   near('single-side loader capacity = load × 60 / 3.5 min', s1.prod.loaderCapTph, s1.trucks[0].loadT * 60 / 3.5, 0.5);
+}
+
+// Seasonal schedule (Fording River climate)
+{
+  const { climateMonth, dayMix, monthsFrom, runSchedule } = await import('../js/season.js');
+  const nov = m => climateMonth(10, m);
+  near('Nov typical snow days = station median 10', nov(0).sn02, 10, 1e-9);
+  near('Nov cautious snow days = P90 16', nov(1).sn02, 16, 1e-9);
+  near('Nov optimistic temperature = P90 −3.0 °C', nov(-1).tmean, -3.0, 1e-9);
+  near('edited median moves the range: Nov snow 20 → cautious 26', climateMonth(10, 1, { 11: { sn02: 20 } }).sn02, 26, 1e-9);
+  const mix = dayMix(nov(0), 30);
+  near('day types add up to the month', mix.reduce((a, t) => a + t.days, 0), 30, 1e-9);
+  near('months Sep 10 → Jan 21: 5 months', monthsFrom('2026-09-10', '2027-01-21').length, 5, 0);
+  near('first month starts on the 10th (21 days)', monthsFrom('2026-09-10', '2027-01-21')[0].days, 21, 0);
+  const sch = runSchedule({ start: '2026-09-01', targetT: 45000, workFrac: 1, dayTonnes: () => 1000 });
+  near('1000 t/day, 45 000 t from Sep 1 → finishes Oct 15', +sch.finish.date.slice(5).replace('-', ''), 1015, 0);
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');

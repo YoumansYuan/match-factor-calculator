@@ -304,9 +304,9 @@ export const SURFACES = [
   { id: 'dry', name: 'Dry', rrAdd: 0, rrMin: 0, tractionMult: 1, tractionMax: 1, note: '' },
   { id: 'wet', name: 'Wet', rrAdd: 1.5, rrMin: 0, tractionMult: 0.82, tractionMax: 1, note: 'Clay loam dry 0.55 → wet 0.45 (CAT47); wet muddy surface on firm base ≈ 4 % RR (Tannant 2001). +1.5 % RR is an estimate.' },
   { id: 'muddy', name: 'Muddy', rrAdd: 4.0, rrMin: 0, tractionMult: 0.7, tractionMax: 0.4, note: 'Mud on the running surface: RR +4 %, traction ≈ 0.35–0.45 (estimate from CAT47 rutted/soft rows and Tannant 2001).' },
-  { id: 'packedsnow', name: 'Packed snow', rrAdd: 0, rrMin: 2.5, tractionMult: 1, tractionMax: 0.25, note: 'Packed snow RR 2.5 %; traction 0.20 (CAT) – 0.55 (Tannant).' },
-  { id: 'loosesnow', name: 'Loose snow', rrAdd: 0, rrMin: 4.5, tractionMult: 1, tractionMax: 0.18, note: 'Loose snow RR 4.5 % (Caterpillar 1988, in Tannant 2001); traction 0.10–0.25.' },
-  { id: 'ice', name: 'Ice', rrAdd: 0, rrMin: 0, tractionMult: 1, tractionMax: 0.12, note: 'Ice traction 0.12 (CAT47); wet ice 0.05–0.10 (Tannant).' },
+  { id: 'packedsnow', name: 'Packed snow', rrAdd: 0, rrMin: 2.5, tractionMult: 1, tractionMax: 0.25, capKmh: 40, note: 'Packed snow RR 2.5 %; traction 0.20 (CAT) – 0.55 (Tannant). Speed cap 40 km/h (planning estimate — typical winter site rule).' },
+  { id: 'loosesnow', name: 'Loose snow', rrAdd: 0, rrMin: 4.5, tractionMult: 1, tractionMax: 0.18, capKmh: 30, note: 'Loose snow RR 4.5 % (Caterpillar 1988, in Tannant 2001); traction 0.10–0.25. Speed cap 30 km/h (planning estimate).' },
+  { id: 'ice', name: 'Ice', rrAdd: 0, rrMin: 0, tractionMult: 1, tractionMax: 0.12, capKmh: 25, note: 'Ice traction 0.12 (CAT47); wet ice 0.05–0.10 (Tannant). Speed cap 25 km/h (planning estimate).' },
   { id: 'thaw', name: 'Spring thaw / break-up', rrAdd: 3.0, rrMin: 0, tractionMult: 0.85, tractionMax: 0.45, note: 'Spring break-up is a leading cause of road failure in Canadian mines (Tannant 2001). +3 % RR is an estimate.' },
 ];
 
@@ -327,8 +327,37 @@ export const SKY = [
 ];
 export const VIS_SRC = 'Weather, dust and darkness factors are planning estimates (no OEM data). Edit them under Detailed → Operations → Advanced assumptions if your site has time-study data.';
 
-// Approximate monthly mean air temperature (°C), Elk Valley BC (Sparwood area). Used only as a default.
-export const MONTHLY_TEMP_C = [-8, -5, 0, 5, 10, 14, 17, 16, 11, 5, -2, -7];
+// Monthly mean air temperature (°C) at the Fording River operation (EC Climate Normals 1981–2010, Fording River Cominco, 1,585 m).
+// Used as the default temperature for the work date.
+export const MONTHLY_TEMP_C = [-9.9, -8.2, -3.5, 1.1, 5.5, 9.7, 12.6, 12.1, 7.5, 1.8, -6.2, -11.3];
+
+// Monthly climate at the Fording River operation (Environment Canada station FORDING RIVER COMINCO, climate ID 1152899,
+// 50°08'55" N 114°51'18" W, 1,585 m). Each value is [P10, P50, P90] over the years of daily records 1970–2007
+// (33–38 complete years per month): tmean = mean daily temperature °C; pr02 / pr5 = days with precipitation ≥ 0.2 / 5 mm;
+// sn02 / sn5 = days with snowfall ≥ 0.2 / 5 cm; txle0 = days with max temperature ≤ 0 °C; sog1 = days with ≥ 1 cm snow on the ground.
+// Computed from the EC daily data by Claude (2026-11-27); normals (1981–2010) are in CLIMATE.normals for reference.
+export const CLIMATE = {
+  id: 'fording', name: 'Fording River (EC Fording River Cominco, 1,585 m)', elevM: 1585, lat: 50.149, lon: -114.855,
+  src: 'Environment and Climate Change Canada — station FORDING RIVER COMINCO (climate ID 1152899): daily data 1970–2007 (P10/P50/P90 per month) and Canadian Climate Normals 1981–2010.',
+  months: [
+    { tmean: [-14.7, -10.6, -6.7], pr02: [8, 11.5, 18], pr5: [1, 3, 7], sn02: [8, 11, 18], sn5: [1, 3, 7], txle0: [19.4, 25.5, 30], sog1: [21.7, 31, 31] },
+    { tmean: [-12.2, -7.5, -4.6], pr02: [5.2, 9, 13], pr5: [1, 3, 5], sn02: [5, 9, 13], sn5: [1, 3, 5], txle0: [13, 19, 24], sog1: [22.4, 28, 28.8] },
+    { tmean: [-6.8, -3.9, -1.4], pr02: [6.4, 11, 16.2], pr5: [1, 4, 6], sn02: [6, 9, 15], sn5: [0.4, 3, 5], txle0: [4.4, 13, 22.6], sog1: [8.3, 24.2, 31] },
+    { tmean: [-1.2, 1.2, 2.7], pr02: [6, 10, 12.8], pr5: [1, 3, 5], sn02: [4, 6, 9], sn5: [0, 2, 4], txle0: [0, 4, 7.8], sog1: [2.8, 6.3, 11.5] },
+    { tmean: [3.6, 6, 7.2], pr02: [4.7, 12, 15.3], pr5: [1.7, 4, 7.3], sn02: [0.7, 3, 6.3], sn5: [0, 1, 2], txle0: [0, 0, 1.3], sog1: [0.8, 2, 6.2] },
+    { tmean: [8.4, 9.8, 11.8], pr02: [9, 14, 19.2], pr5: [2.4, 5, 8], sn02: [0, 0, 2.2], sn5: [0, 0, 1], txle0: [0, 0, 0], sog1: [0, 0, 0] },
+    { tmean: [10.7, 13.2, 15.6], pr02: [5.4, 10, 17.2], pr5: [1, 3, 7.6], sn02: [0, 0, 0], sn5: [0, 0, 0], txle0: [0, 0, 0], sog1: [0, 0, 0] },
+    { tmean: [10.2, 12.1, 14.5], pr02: [3, 9, 16.6], pr5: [1, 3, 6], sn02: [0, 0, 0], sn5: [0, 0, 0], txle0: [0, 0, 0], sog1: [0, 0, 0] },
+    { tmean: [4.9, 7.6, 9.7], pr02: [5, 9, 15], pr5: [1, 3, 6], sn02: [0, 1, 4], sn5: [0, 0, 2], txle0: [0, 0, 1.6], sog1: [0, 0, 2.1] },
+    { tmean: [0, 2.1, 3.5], pr02: [5.4, 9, 13.2], pr5: [1, 2, 5.6], sn02: [2, 4, 8], sn5: [0, 1, 3], txle0: [0, 2, 7.6], sog1: [1, 4.1, 10.2] },
+    { tmean: [-9, -5.5, -3], pr02: [5.3, 11, 16], pr5: [1, 3, 7.6], sn02: [4.4, 10, 16], sn5: [0.4, 3, 5], txle0: [10, 20, 25.6], sog1: [11.8, 24.8, 30] },
+    { tmean: [-15.6, -10.7, -7.5], pr02: [8, 11, 16.6], pr5: [1, 3, 10.6], sn02: [7, 11, 15.6], sn5: [1, 3, 9.2], txle0: [22.8, 28, 31], sog1: [27, 31, 31] },
+  ],
+  // 1981–2010 normals: daily mean °C, rain mm, snow cm, precip mm
+  normals: { tmean: [-9.9, -8.2, -3.5, 1.1, 5.5, 9.7, 12.6, 12.1, 7.5, 1.8, -6.2, -11.3], rainMm: [3.7, 3.1, 7.1, 14.4, 40.0, 82.1, 58.0, 46.5, 40.6, 22.6, 17.1, 4.6],
+    snowCm: [41.7, 30.8, 37.6, 29.4, 19.1, 3.7, 0.1, 0.6, 7.9, 17.9, 43.8, 44.7], precipMm: [45.5, 33.9, 44.8, 43.8, 59.1, 85.7, 58.1, 47.1, 48.5, 40.5, 60.9, 49.2] },
+};
+
 
 // Digging face setup (where the excavator stands relative to the truck).
 // Cycle-time factor from the Komatsu Performance Handbook "Conversion factor for excavator" (KOM p.15A-10):

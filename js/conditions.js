@@ -7,7 +7,7 @@
 //   × job efficiency (small operational delays only)
 //   × condition factor (weather visibility × dust × darkness)
 // Speed caps from visibility are applied to the haul itself, not as an efficiency.
-import { SKY, SURFACES, MONTHLY_TEMP_C } from './data/equipment.js?v=202611272100';
+import { SKY, SURFACES, MONTHLY_TEMP_C } from './data/equipment.js?v=202611272110';
 
 const rad = d => d * Math.PI / 180;
 const byId = (list, id) => list.find(x => x.id === id);
@@ -76,7 +76,8 @@ export function siteConditions(site, ops) {
   const water = waterTruckStatus(tempC);
   const waterEff = site.waterTruck ? water.eff : 0;
   // dust only on a dry road; frozen ground raises less dust
-  const dust = surface.id === 'dry' && !['rain', 'snowing'].includes(sky.id) ? (1 - waterEff) * (tempC <= 0 ? 0.5 : 1) : 0;
+  // frozen ground raises much less dust (light dust only, no speed cap)
+  const dust = surface.id === 'dry' && !['rain', 'snowing'].includes(sky.id) ? (1 - waterEff) * (tempC <= 0 ? 0.4 : 1) : 0;
   // time model
   const startH = clockToH(ops.shiftStart), endH = clockToH(ops.shiftEnd);
   let shiftLenH = ((endH - startH) % 24 + 24) % 24; if (shiftLenH === 0) shiftLenH = 24;
@@ -97,7 +98,9 @@ export function siteConditions(site, ops) {
   const darkFrac = shifts.reduce((a, s) => a + s.darkH, 0) / (nShifts * shiftLenH);
   const skyF = sky.eff, dustF = 1 - A.dustEffLoss * dust, darkF = 1 - A.darkEffLoss * darkFrac;
   const condFactor = skyF * dustF * darkF;
-  let capKmh = sky.capKmh || 0;
+  // speed caps: visibility (sky) and a slippery road surface (snow / ice); the lowest applies
+  const caps = [sky.capKmh, surface.capKmh].filter(x => x > 0);
+  let capKmh = caps.length ? Math.min(...caps) : 0;
   if (dust >= 0.5) capKmh = capKmh ? Math.min(capKmh, A.dustCapKmh) : A.dustCapKmh;
   const jobEff = Math.min(60, Math.max(0, +ops.jobEffMin || 0)) / 60;
   return {

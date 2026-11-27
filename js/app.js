@@ -1,10 +1,12 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272100';
-import { siteConditions, hToClock } from './conditions.js?v=202611272100';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272100';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272100';
-import { renderEquipment, renderMethod } from './docs.js?v=202611272100';
-import { initVisual, updateVisual } from './visual.js?v=202611272100';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272100';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272110';
+import { siteConditions, hToClock } from './conditions.js?v=202611272110';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272110';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272110';
+import { renderEquipment, renderMethod } from './docs.js?v=202611272110';
+import { initVisual, updateVisual } from './visual.js?v=202611272110';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272110';
+import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272110';
+import { CLIMATE } from './data/equipment.js?v=202611272110';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -15,6 +17,8 @@ const DEFAULTS = {
   loaders: [{ modelId: 'cat390fl', bucketId: 'sd46', count: 1, jobCond: 'C', setup: 'bench', loadingSide: 'single', benchHeightM: '', swingDeg: '', conditionId: 'good', availabilityPct: '', cycleOverrideS: '', fillOverride: '' }],
   trucks: [{ modelId: 'cat745', count: 6, conditionId: 'good', availabilityPct: '', payloadKg: '', bodyFillPct: '', spotMin: '', dumpMin: '' }],
   target: { volume: '', basis: 'auto' },
+  // seasonal schedule: month-by-month weather from the site climate, from the work date (start) to the end date or the target
+  season: { on: true, end: '', level: 0, climate: {} },
   profile: { segmentM: 100, loadAreaM: 50, dumpAreaM: 50, reverse: false, points: null, name: '' },
   ops: { shiftStart: '07:00', shiftEnd: '19:00', shiftsPerDay: 2, daysPerYear: 300, nonProdMin: 60, jobEffMin: 55,
     standby: { faceMin: 20, blastMin: 15, relocMin: 10, fuelMin: 15 }, assumptions: { dustEffLoss: 0.08, dustCapKmh: 40, darkEffLoss: 0.05 }, bunching: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', mfUseAvailability: false,
@@ -37,7 +41,7 @@ function migrate(saved) {
   const st = Object.assign(d, saved, {
     site: { ...d.site, ...(saved.site || {}) }, material: { ...d.material, ...(saved.material || {}) },
     ops: { ...d.ops, ...(saved.ops || {}), standby: { ...d.ops.standby, ...((saved.ops || {}).standby || {}) }, assumptions: { ...d.ops.assumptions, ...((saved.ops || {}).assumptions || {}) } },
-    profile: { ...d.profile, ...(saved.profile || {}) }, target: { ...d.target, ...(saved.target || {}) },
+    profile: { ...d.profile, ...(saved.profile || {}) }, target: { ...d.target, ...(saved.target || {}) }, season: { ...d.season, ...(saved.season || {}) },
   });
   (st.loaders || []).forEach(l => { if (!l.loadingSide) l.loadingSide = 'single'; if (!l.setup) { l.setup = 'bench'; if (+l.swingDeg === 90) l.swingDeg = ''; } if (+l.benchHeightM === 4.5 && !l.benchSet) l.benchHeightM = ''; });
   if (st.material.digTm3 == null && st.material.looseTm3 != null) { // v1: loose density + swell
@@ -126,7 +130,7 @@ function waterfallHTML(rows) {
 function save() { try { localStorage.setItem('mfc-state-v1', JSON.stringify(state)); } catch (e) { /* ignore */ } }
 
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
-function setPath(o, p, v) { const ks = p.split('.'); let a = o; ks.slice(0, -1).forEach(k => { a = a[k]; }); a[ks.at(-1)] = v; }
+function setPath(o, p, v) { const ks = p.split('.'); let a = o; ks.slice(0, -1).forEach(k => { if (a[k] == null) a[k] = {}; a = a[k]; }); a[ks.at(-1)] = v; }
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -209,14 +213,15 @@ function renderRows() {
 }
 
 // ------------------------------------------------------------------ engine input
-function toEngineInput() {
+function toEngineInput(siteIn = null) {
   const s = state;
   if (!s.site.date) s.site.date = todayISO();
-  const c = lastCond = siteConditions(s.site, s.ops);
+  const c = siteConditions(siteIn || s.site, s.ops);
   const cap = c.capKmh || Infinity;
-  const site = { ...s.site, tempC: c.tempC, speedLimitKmh: Math.min(+s.site.speedLimitKmh || Infinity, cap), downhillLimitKmh: Math.min(+s.site.downhillLimitKmh || Infinity, cap) };
+  const site = { ...(siteIn || s.site), tempC: c.tempC, speedLimitKmh: Math.min(+s.site.speedLimitKmh || Infinity, cap), downhillLimitKmh: Math.min(+s.site.downhillLimitKmh || Infinity, cap) };
   delete site.altitudeM;
-  lastOps = { ...s.ops, jobEff: c.jobEff, utilization: c.utilization, truckUtil: c.truckUtil, condFactor: c.condFactor, shiftH: c.operatingH, shiftsPerDay: c.nShifts };
+  const ops = { ...s.ops, jobEff: c.jobEff, utilization: c.utilization, truckUtil: c.truckUtil, condFactor: siteIn ? 1 : c.condFactor, shiftH: c.operatingH, shiftsPerDay: c.nShifts };
+  if (!siteIn) { lastCond = c; lastOps = ops; }
   return {
     site,
     material: { looseTm3: looseOf(s.material), fill: s.material.fill, frozen: s.material.frozen },
@@ -228,7 +233,8 @@ function toEngineInput() {
     trucks: s.trucks.map(t => ({ modelId: t.modelId, count: +t.count || 0, conditionId: t.conditionId, availability: t.availabilityPct === '' ? '' : +t.availabilityPct / 100,
       payloadKg: t.payloadKg === '' || t.payloadKg == null ? null : +t.payloadKg, bodyFill: t.bodyFillPct === '' || t.bodyFillPct == null ? '' : +t.bodyFillPct / 100, spotMin: t.spotMin === '' ? undefined : +t.spotMin, dumpMin: t.dumpMin === '' ? undefined : +t.dumpMin })),
     profile: { ...s.profile, points: s.profile.points },
-    ops: lastOps,
+    ops,
+    cond: c,
   };
 }
 
@@ -247,7 +253,88 @@ function run() {
   try { input = toEngineInput(); result = computeScenario(input); } catch (e) { $('#warnings').innerHTML = `<b>Error:</b> ${esc(e.message)}`; console.error(e); return; }
   renderSiteDerived();
   renderTags(); renderKPIs(); renderTables(); renderCharts(); renderProfileSummary();
+  seasonResult = seasonCalc(); seasonRangeRes = state.season.on ? [-1, 1].map(L => seasonCalc(L)) : null; renderSeason();
   updateVisual(result);
+}
+
+// ------------------------------------------------------------------ seasonal schedule
+// For every month from the work date: split the days into weather day types (from the site climate), compute the
+// production of each day type with the normal engine (same fleet, road and shift), weight by days, and add up.
+let seasonResult = null;
+function seasonCalc(level = state.season.level) {
+  const se = state.season || {};
+  if (!se.on || !result) return null;
+  const cache = new Map(), tc = targetCalc();
+  const dayTonnes = (t, mo) => {
+    const site = { ...state.site, date: `${mo.y}-${String(mo.m + 1).padStart(2, '0')}-15`, tempC: +mo.tempC.toFixed(1), skyId: t.skyId, surfaceId: t.surfaceId };
+    const inp = toEngineInput(site), c = inp.cond;
+    // the engine result only depends on sky/surface (speed caps, RR, traction); darkness, dust and visibility go in condFactor
+    const key = `${t.skyId}|${t.surfaceId}|${c.capKmh}|${mo.tempC > 30 ? Math.round(mo.tempC) : 0}`;
+    if (!cache.has(key)) cache.set(key, computeScenario(inp).prod.dayT);
+    return cache.get(key) * c.condFactor;
+  };
+  const out = runSchedule({ start: state.site.date || todayISO(), end: se.end || '', level, overrides: se.climate || {}, targetT: tc.ok ? tc.tonnes : 0,
+    workFrac: (+state.ops.daysPerYear || 365) / 365, elevM: result.siteAlt, dayTonnes });
+  out.level = level; out.tc = tc;
+  return out;
+}
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// optimistic and cautious ends of the slider (computed once per run)
+let seasonRangeRes = null;
+const seasonRange = () => seasonRangeRes;
+function seasonHTML(sr = seasonResult) {
+  const se = state.season || {};
+  if (!se.on) return '<p class="muted">Seasonal schedule is off. Turn it on to see production month by month with the site weather.</p>';
+  if (!sr || !sr.rows.length) return '<p class="muted">Set a work (start) date to see the month-by-month schedule.</p>';
+  const md = matDerived(), tc = sr.tc, basis = tc.basis || 'bcm', dens = basis === 'bcm' ? md.bank : md.loose;
+  const vol = t => fmt('vol', t / dens, 0);
+  const rng = seasonRange();
+  const maxT = Math.max(...sr.rows.map(r => r.perDay), 1);
+  const typeCol = { heavy: 'var(--blue)', light: '#8fb3d9', rain: '#5aa0a0', packed: '#b9c4cf', dry: 'var(--accent)' };
+  const rows = sr.rows.map(r => {
+    const mix = r.types.map(t => `<span style="flex:${t.share};background:${typeCol[t.key]}" title="${esc(t.label)}: ${t.days.toFixed(1)} days, ${fmtU('mass', t.dayT, 0)}/day"></span>`).join('');
+    return `<tr><td>${MON[r.m]} ${r.y}${r.from > 1 || r.partial || r.to < r.dim ? ` <small class="muted">(${r.partial ? `to day ${r.from + r.days - 1}` : `${r.from}–${r.to}`})</small>` : ''}</td>
+      <td>${fmt('temp', r.tempC, 0)}</td><td>${r.c.sn02.toFixed(0)}</td><td>${(r.c.pr02 - Math.min(r.c.pr02, r.c.sn02)).toFixed(0)}</td>
+      <td><div class="stack mini">${mix}</div></td>
+      <td><span class="sbar"><i style="width:${(r.perDay / maxT * 100).toFixed(1)}%"></i></span> ${fmt('mass', r.perDay, 0)}</td>
+      <td>${r.workDays.toFixed(1)}</td><td>${vol(r.monthT)}</td><td><b>${vol(r.cum)}</b></td></tr>`;
+  }).join('');
+  const legend = Object.entries({ heavy: 'Heavy snowfall', light: 'Light snowfall', rain: 'Rain', packed: 'Dry, snow-packed road', dry: 'Dry' }).map(([k, v]) => `<span><i style="background:${typeCol[k]}"></i>${v}</span>`).join('');
+  const fin = sr.finish ? `Finishes around <b>${sr.finish.date}</b> (${sr.finish.workDays.toFixed(0)} working days)` : tc.ok ? `<b>Target not reached</b> by ${se.end || 'the end of the 3-year window'} — ${vol(sr.total)} of ${fmt('vol', tc.V, 0)} ${volU(basis)} done` : `${vol(sr.total)} ${volU(basis)} by ${se.end || 'the end of the window'} (enter a target volume to get a finish date)`;
+  const span = rng && rng.every(x => x && x.finish) ? ` · range ${rng[0].finish.date} (optimistic) to ${rng[1].finish.date} (cautious)` : '';
+  return `<p class="season-head">${fin}${span}<br><small class="muted">${esc(levelLabel(se.level))} · temperatures corrected from the station (${CLIMATE.elevM} m) to the haul road (${fmt('len', result.siteAlt, 0)} ${unit('len')}): ${sr.tAdj >= 0 ? '+' : ''}${sr.tAdj.toFixed(1)} °C</small></p>
+    <div class="tblwrap"><table class="tbl season-tbl"><thead><tr><th>Month</th><th>Temp ${unit('temp')}</th><th>Snow days</th><th>Rain days</th><th>Weather mix</th><th>${unit('mass')} per working day</th><th>Working days</th><th>${volU(basis)} this month</th><th>Cumulative</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${seasonChart(sr, dens, basis)}
+    <div class="stack-legend">${legend}</div>`;
+}
+// Cumulative volume vs date (inline SVG): the chosen level, plus the optimistic/cautious ends as a band
+function seasonChart(sr, dens, basis) {
+  const rng = seasonRange() || [], all = [sr, ...rng].filter(Boolean);
+  const W = 760, H = 220, PL = 64, PR = 16, PT = 14, PB = 30;
+  const pts = x => { const p = [[x.rows[0] ? Date.UTC(x.rows[0].y, x.rows[0].m, x.rows[0].from) : 0, 0]]; x.rows.forEach(r => p.push([Date.UTC(r.y, r.m, r.from + r.days), r.cum])); return p; };
+  const series = all.map(pts), t0 = series[0][0][0], t1 = Math.max(...series.map(s => s.at(-1)[0])), yMax = Math.max(sr.tc.ok ? sr.tc.tonnes : 0, ...series.map(s => s.at(-1)[1])) * 1.05 || 1;
+  const X = t => PL + (t - t0) / Math.max(1, t1 - t0) * (W - PL - PR), Y = v => H - PB - v / yMax * (H - PT - PB);
+  const path = s => s.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('');
+  let grid = '';
+  for (let k = 0; k <= 4; k++) { const v = yMax / 1.05 * k / 4; grid += `<line x1="${PL}" x2="${W - PR}" y1="${Y(v)}" y2="${Y(v)}" class="pg"/><text x="${PL - 6}" y="${Y(v) + 4}" text-anchor="end" class="pt">${fmt('vol', v / dens / 1000, 0)}k</text>`; }
+  sr.rows.forEach(r => { const x = X(Date.UTC(r.y, r.m, 1)); if (x >= PL) grid += `<line x1="${x}" x2="${x}" y1="${PT}" y2="${H - PB}" class="pg"/><text x="${x + 3}" y="${H - PB + 16}" class="pt">${MON[r.m]}</text>`; });
+  const tgt = sr.tc.ok ? `<line x1="${PL}" x2="${W - PR}" y1="${Y(sr.tc.tonnes)}" y2="${Y(sr.tc.tonnes)}" class="ptarget"/><text x="${W - PR - 4}" y="${Y(sr.tc.tonnes) - 5}" text-anchor="end" class="pt">target</text>` : '';
+  return `<svg class="season-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative volume by date">${grid}${tgt}
+    ${rng.filter(Boolean).map(x => `<path d="${path(pts(x))}" class="pband"/>`).join('')}<path d="${path(series[0])}" class="pmain"/>
+    <text x="14" y="${(PT + H - PB) / 2}" class="pt" transform="rotate(-90 14 ${(PT + H - PB) / 2})" text-anchor="middle">cumulative k ${volU(basis)}</text></svg>
+    <p class="note">Solid line: the chosen weather level. Dashed lines: optimistic and cautious ends of the slider.</p>`;
+}
+function renderSeason() {
+  const html = seasonHTML();
+  ['#season-out', '#v-season-out'].forEach(id => { const el = $(id); if (el) el.innerHTML = html; });
+  const lab = levelLabel(state.season.level);
+  $$('.season-level-lbl').forEach(x => { x.textContent = lab; });
+}
+// Editable monthly climate table (blank = station median); the P10–P90 spread moves with an edited value
+function renderClimateTable() {
+  const el = $('#climate-rows'); if (!el) return;
+  el.innerHTML = CLIMATE.months.map((row, m) => `<tr><td>${MON[m]}</td>${CLIMATE_KEYS.map(k => `<td><input type="number" step="${k === 'tmean' ? 0.5 : 1}" data-bind="season.climate.${m + 1}.${k}" placeholder="${row[k][1]}" title="Station record: P10 ${row[k][0]}, median ${row[k][1]}, P90 ${row[k][2]}"></td>`).join('')}</tr>`).join('');
+  $('#climate-head').innerHTML = `<th>Month</th>${CLIMATE_KEYS.map(k => `<th>${esc(CLIMATE_LABELS[k])}</th>`).join('')}`;
 }
 
 function renderTags() {
@@ -438,6 +525,7 @@ function wire() {
     if (rm) { const [k, i] = rm.dataset.rm.split('.'); state[k].splice(+i, 1); renderRows(); schedule(); }
   });
   $('#sel-material').addEventListener('change', e => { setMaterial(e.target.value); renderRows(); renderMaterialFields(); schedule(); });
+  $('#climate-reset').onclick = () => { state.season.climate = {}; renderBound(); schedule(); };
   $('#add-loader').onclick = () => { state.loaders.push({ ...clone(DEFAULTS.loaders[0]), modelId: 'cat385cl', bucketId: 'hb46' }); renderRows(); schedule(); };
   $('#add-truck').onclick = () => { state.trucks.push({ ...clone(DEFAULTS.trucks[0]), modelId: 'jd460p', count: 2 }); renderRows(); schedule(); };
   $('#profile-sample').onclick = loadSample;
@@ -480,7 +568,7 @@ function renderDocs() { renderEquipment($('#equip-content')); renderMethod($('#m
 function boot() {
   setSystem(state.units || 'si');
   $$('.unit-toggle button').forEach(x => x.classList.toggle('active', x.dataset.units === getSystem()));
-  initSelects(); normaliseRows(); renderRows(); renderDocs();
+  initSelects(); renderClimateTable(); normaliseRows(); renderRows(); renderDocs();
   $('#profile-name').textContent = state.profile.name || '';
   if (!state.profile.points) loadSample(); else run();
 }
