@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Match Factor Calculator</title>
+  <meta name="description" content="Truck–loader match factor, haul cycle and fleet production calculator for surface mining, with OEM rimpull/retarder curves and haul-profile upload.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><path d="M3 22h16l3-6h6v6h1v3H3z" fill="currentColor" opacity=".9"/><circle cx="9" cy="26" r="3" fill="currentColor"/><circle cx="24" cy="26" r="3" fill="currentColor"/><path d="M4 21l4-9h9l2 9z" fill="var(--accent)"/></svg>
+    <div>
+      <h1>Match Factor Calculator</h1>
+      <p>Truck–loader matching, haul cycle &amp; fleet production for surface mines</p>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="calc" role="tab">Calculator</button>
+    <button class="tab" data-tab="equip" role="tab">Equipment Data</button>
+    <button class="tab" data-tab="method" role="tab">Method &amp; Sources</button>
+  </nav>
+  <div class="unit-toggle" role="group" aria-label="Units">
+    <button data-units="si" class="active">Metric</button>
+    <button data-units="imp">Imperial</button>
+  </div>
+</header>
+
+<main>
+<!-- ============================================================ CALCULATOR -->
+<section id="tab-calc" class="tabpanel active">
+  <div class="layout">
+    <div class="inputs">
+
+      <details class="card" open>
+        <summary><span class="num">1</span> Site &amp; Haul Road</summary>
+        <div class="grid g3">
+          <label>Altitude <span class="u" data-u="len"></span><input type="number" data-bind="site.altitudeM" data-q="len" step="10"></label>
+          <label>Ambient temperature <span class="u" data-u="temp"></span><input type="number" data-bind="site.tempC" data-q="temp" step="1"></label>
+          <label>Weather / surface state<select data-bind="site.weatherId" id="sel-weather"></select></label>
+          <label class="span3">Road surface<select data-bind="site.roadId" id="sel-road"></select></label>
+          <label>Rolling resistance override <span class="u">%</span><input type="number" data-bind="site.rrOverride" step="0.1" placeholder="auto"></label>
+          <label>Traction coefficient override<input type="number" data-bind="site.tractionOverride" step="0.01" placeholder="auto"></label>
+          <div class="resolved" id="road-resolved"></div>
+          <label>Speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.speedLimitKmh" data-q="speed" step="1"></label>
+          <label>Downhill speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.downhillLimitKmh" data-q="speed" step="1"></label>
+          <label>Downhill limit applies below grade <span class="u">%</span><input type="number" data-bind="site.downhillGradePct" step="0.5"></label>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="num">2</span> Material</summary>
+        <div class="grid g4">
+          <label class="span2">Material<select id="sel-material"></select></label>
+          <label>Loose density <span class="u" data-u="dens"></span><input type="number" data-bind="material.looseTm3" data-q="dens" step="0.01"></label>
+          <label>Bucket fill factor<input type="number" data-bind="material.fill" step="0.01" min="0.3" max="1.3"></label>
+          <label>Swell <span class="u">%</span><input type="number" data-bind="material.swellPct" step="1"></label>
+          <label class="check span3"><input type="checkbox" data-bind="material.frozen"> Frozen / cemented material <small>(fill factor × <span data-show="ops.frozenFillMult"></span>, dig cycle × <span data-show="ops.frozenCycleMult"></span>)</small></label>
+          <p class="note span4" id="material-note"></p>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="num">3</span> Loading Units</summary>
+        <div id="loader-rows" class="rows"></div>
+        <button class="btn ghost" id="add-loader">+ Add loading unit</button>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="num">4</span> Haul Trucks <small class="muted">— mixed fleets supported</small></summary>
+        <div id="truck-rows" class="rows"></div>
+        <button class="btn ghost" id="add-truck">+ Add truck type</button>
+      </details>
+
+      <details class="card" open>
+        <summary><span class="num">5</span> Haul Profile</summary>
+        <div class="profile-src">
+          <label class="btn file">Upload CSV<input type="file" id="profile-file" accept=".csv,.txt"></label>
+          <button class="btn ghost" id="profile-sample">Load sample (EVR ElevBasemap profile)</button>
+          <span class="muted" id="profile-name"></span>
+        </div>
+        <p class="note">CSV with two columns <code>distance, elevation</code> or three columns <code>x, y, z</code> (e.g. a Minesite polyline export). Header row optional. Values in the current unit system. Loading point = first point; dump = last point.</p>
+        <div class="grid g4">
+          <label>Segment length <span class="u" data-u="len"></span><input type="number" data-bind="profile.segmentM" data-q="len" step="5" min="5"></label>
+          <label>Load-area travel <span class="u" data-u="len"></span><input type="number" data-bind="profile.loadAreaM" data-q="len" step="10"></label>
+          <label>Dump-area travel <span class="u" data-u="len"></span><input type="number" data-bind="profile.dumpAreaM" data-q="len" step="10"></label>
+          <label class="check"><input type="checkbox" data-bind="profile.reverse"> Reverse direction<br><small>(load at last point)</small></label>
+        </div>
+        <div class="chart-box sm"><canvas id="chart-profile-mini"></canvas></div>
+        <div class="kv" id="profile-summary"></div>
+      </details>
+
+      <details class="card">
+        <summary><span class="num">6</span> Operations &amp; Method</summary>
+        <div class="grid g4">
+          <label>Shift length <span class="u">h</span><input type="number" data-bind="ops.shiftH" step="0.5"></label>
+          <label>Shifts per day<input type="number" data-bind="ops.shiftsPerDay" step="1"></label>
+          <label>Operating days / year<input type="number" data-bind="ops.daysPerYear" step="1"></label>
+          <label>Job efficiency <span class="u">min/h</span><input type="number" data-bind="ops.jobEffMin" step="1" max="60"></label>
+          <label>Utilization <span class="u">%</span><input type="number" data-bind="ops.utilizationPct" step="1"></label>
+          <label>Bunching factor<input type="number" data-bind="ops.bunching" step="0.01" min="0.5" max="1"></label>
+          <label class="span2">Pass rounding<select data-bind="ops.passRule">
+            <option value="third">Add last pass if ≥ ⅓ bucket (Burt &amp; Caccetta)</option>
+            <option value="up">Always round up (fill to capacity)</option>
+            <option value="down">Round down (never exceed rated payload)</option>
+            <option value="exact">Fractional passes (theoretical)</option>
+          </select></label>
+          <label class="span2">Truck loading time<select data-bind="ops.loadTimeMethod">
+            <option value="n">passes × loader cycle (MIME 333 / Burt)</option>
+            <option value="komatsu">(passes − 1) × cycle + first pass (Komatsu)</option>
+          </select></label>
+          <label class="span2">Travel model<select data-bind="ops.travelModel">
+            <option value="sim">Rimpull simulation with acceleration &amp; braking</option>
+            <option value="steady">Steady speed per segment (textbook d / v)</option>
+          </select></label>
+          <label class="check span2"><input type="checkbox" data-bind="ops.mfUseAvailability"> Base match factor on available units (count × availability)</label>
+        </div>
+        <details class="sub">
+          <summary>Advanced assumptions</summary>
+          <div class="grid g4">
+            <label>Braking deceleration <span class="u" data-u="decel"></span><input type="number" data-bind="ops.brakingDecel" data-q="decel" step="0.05"></label>
+            <label>Rotating-mass factor<input type="number" data-bind="ops.massFactor" step="0.01"></label>
+            <label>Idle engine load factor<input type="number" data-bind="ops.idleLF" step="0.01"></label>
+            <label>Retarder derate above 32 °C <span class="u">/°C</span><input type="number" data-bind="ops.hotRetarderDeratePerC" step="0.005"></label>
+            <label>First-pass fraction (Komatsu)<input type="number" data-bind="ops.firstPassFrac" step="0.05"></label>
+            <label>Frozen fill-factor multiplier<input type="number" data-bind="ops.frozenFillMult" step="0.01"></label>
+            <label>Frozen cycle multiplier<input type="number" data-bind="ops.frozenCycleMult" step="0.01"></label>
+          </div>
+        </details>
+      </details>
+
+      <div class="actions">
+        <button class="btn" id="btn-export">Export results (CSV)</button>
+        <button class="btn ghost" id="btn-save">Save scenario (JSON)</button>
+        <label class="btn ghost file">Open scenario<input type="file" id="scenario-file" accept=".json"></label>
+        <button class="btn ghost" id="btn-print">Print / PDF</button>
+        <button class="btn ghost danger" id="btn-reset">Reset defaults</button>
+      </div>
+    </div>
+
+    <!-- ===================== RESULTS -->
+    <aside class="results" id="results">
+      <div class="kpis">
+        <div class="kpi mf" id="kpi-mf">
+          <span class="lbl">Match factor</span>
+          <span class="val" id="mf-val">—</span>
+          <span class="sub" id="mf-msg"></span>
+          <div class="mfbar"><div class="zone u"></div><div class="zone ok"></div><div class="zone o"></div><span class="pin" id="mf-pin"></span></div>
+          <div class="mfscale"><span>0.5</span><span>1.0</span><span>1.5</span></div>
+        </div>
+        <div class="kpi"><span class="lbl">Fleet production</span><span class="val" id="k-tph">—</span><span class="sub" id="k-tph-sub"></span></div>
+        <div class="kpi"><span class="lbl">Trucks for MF = 1</span><span class="val" id="k-need">—</span><span class="sub" id="k-need-sub"></span></div>
+        <div class="kpi"><span class="lbl">Fuel &amp; CO₂</span><span class="val" id="k-fuel">—</span><span class="sub" id="k-fuel-sub"></span></div>
+      </div>
+      <div class="warn-box" id="warnings"></div>
+      <div class="card flat">
+        <h3>Cycle time by truck type</h3>
+        <div class="chart-box"><canvas id="chart-cycle"></canvas></div>
+        <div class="tbl-wrap"><table class="tbl" id="tbl-trucks"></table></div>
+      </div>
+      <div class="card flat">
+        <h3>Passes &amp; loading</h3>
+        <div class="tbl-wrap"><table class="tbl" id="tbl-pairs"></table></div>
+      </div>
+      <div class="card flat">
+        <h3>Speed along the haul road</h3>
+        <div class="row-ctl"><label>Truck <select id="sel-speed-truck"></select></label></div>
+        <div class="chart-box tall"><canvas id="chart-speed"></canvas></div>
+        <details class="sub"><summary>Segment table</summary><div class="tbl-wrap scroll"><table class="tbl" id="tbl-segs"></table></div></details>
+      </div>
+      <div class="card flat">
+        <h3>Fleet size sensitivity</h3>
+        <div class="row-ctl"><label>Vary <select id="sel-sweep"></select></label></div>
+        <div class="chart-box"><canvas id="chart-sweep"></canvas></div>
+      </div>
+      <div class="card flat">
+        <h3>Production</h3>
+        <div class="kv" id="prod-kv"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ============================================================ EQUIPMENT DATA -->
+<section id="tab-equip" class="tabpanel">
+  <div class="doc">
+    <h2>Equipment data</h2>
+    <p class="lead">Every value used by the calculator, with its source. Values marked <span class="badge est">estimate</span> are not published by the manufacturer — the derivation is stated next to them.</p>
+    <div id="equip-content"></div>
+  </div>
+</section>
+
+<!-- ============================================================ METHOD -->
+<section id="tab-method" class="tabpanel">
+  <div class="doc" id="method-content"></div>
+</section>
+</main>
+
+<footer class="foot">
+  Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
