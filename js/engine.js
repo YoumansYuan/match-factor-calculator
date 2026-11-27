@@ -2,7 +2,7 @@
 // Methods follow MIME 333 Ch.3 (Mitri & Sasmito), the Caterpillar Performance Handbook Ed.47,
 // the Komatsu Specifications & Application Handbook Ed.32 and Burt & Caccetta (2007, corrigendum 2008).
 
-import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611271841';
+import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611271846';
 
 export const G = 9.81;
 const BETA = 0.268;  // kg fuel / kW·h (MIME 333 formula sheet)
@@ -279,6 +279,9 @@ export function computeScenario(input) {
     const cond = byId(CONDITIONS, l.conditionId) || CONDITIONS[1];
     const A = l.availability != null && l.availability !== '' ? +l.availability : cond.availability;
     return { ...l, model, cond, A, power: model.netPowerKw * interp(model.altitude, loadAlt) };
+  });
+  loaders.forEach(l => {
+    if (l.setup === 'bench' && l.stickM && +l.benchHeightM > l.stickM + 0.05) warnings.push(`${l.model.name}: bench height ${(+l.benchHeightM).toFixed(1)} m is more than the stick length (${l.stickM} m). CAT recommends a loading bench about the stick length and never higher; leave the bench height blank to use the stick length.`);
   });
   const trucksIn = input.trucks.filter(t => t.count > 0);
   if (!loaders.length) warnings.push('No loading unit selected.');

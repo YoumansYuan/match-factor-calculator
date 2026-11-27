@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271841';
-import { hToClock } from './conditions.js?v=202611271841';
-import { byId } from './engine.js?v=202611271841';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271841';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271846';
+import { hToClock } from './conditions.js?v=202611271846';
+import { byId } from './engine.js?v=202611271846';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271846';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -340,7 +340,7 @@ function renderPop() {
       <h4>Model</h4><div class="mcards">${LOADERS.map(x => modelCard(x, x.id === l.modelId, 'loader')).join('')}</div>
       ${stepper(`loaders.${i}.count`, +l.count || 0, 'How many of these excavators')}
       <h4>Where it stands</h4><div class="seg">${SETUPS.map(x => `<button class="${x.id === (l.setup || 'bench') ? 'sel' : ''}" data-setup="${i}:${x.id}">${esc(x.name)}</button>`).join('')}</div>
-      ${(l.setup || 'bench') === 'bench' ? `<label>Bench height <span class="u">(${unit('len')}, about the truck rail height, not more than the stick length)</span><input type="number" step="0.5" min="0" data-bind="loaders.${i}.benchHeightM" data-q="len"></label>` : ''}
+      ${(l.setup || 'bench') === 'bench' ? `<label>Bench height <span class="u">(${unit('len')}, blank = stick length, CAT recommendation)</span><input type="number" step="0.5" min="0" data-bind="loaders.${i}.benchHeightM" data-q="len" placeholder="${(() => { const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0]; return b.stickM ? `${fmt('len', b.stickM, 2)} (stick)` : ''; })()}"></label>` : ''}
       <p class="note" id="pop-live">${setupNote(i)}</p>
       <div class="grid g2">
         <label>Bucket<select data-bind="loaders.${i}.bucketId">${m.buckets.map(b => `<option value="${b.id}" ${b.id === l.bucketId ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
@@ -445,10 +445,10 @@ function renderPop() {
 function setupNote(i) {
   const st = api.state(), l = st.loaders[i]; if (!l) return '';
   const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
-  const L = { ...l, digDepthM: b.digDepthM, setup: l.setup || 'bench' };
+  const L = { ...l, digDepthM: b.digDepthM, setup: l.setup || 'bench', benchHeightM: l.benchHeightM === '' || l.benchHeightM == null ? b.stickM : +l.benchHeightM };
   const f = api.setupFactor(L); if (!f.setup) return '';
   const cyc = R && R.trucks[0] ? R.trucks[0].pairs[R.loaders.findIndex(x => x.modelId === l.modelId)] : null;
-  return `${esc(f.setup.note)} Cycle-time factor <b>×${f.factor.toFixed(2)}</b> (Komatsu: ${f.setup.id === 'bench' ? `digging depth ${(f.ratio * 100).toFixed(0)} % of the ${fmtU('len', b.digDepthM, 2)} maximum → ${esc(f.row.name)}` : 'digging above the tracks → below 40 %'}, ${esc(f.col.name)}), typical swing ${f.setup.swingDeg}°.${f.setup.id === 'bench' && b.stickM && +l.benchHeightM > b.stickM ? ` Note: this bench is higher than the ${b.stickM} m stick, above the CAT guideline (bench ≈ stick length); the cycle factor already accounts for the deeper dig.` : ''}${cyc ? ` Bucket cycle now <b>${cyc.tc.toFixed(1)} s</b>.` : ''}`;
+  return `${esc(f.setup.note)} Cycle-time factor <b>×${f.factor.toFixed(2)}</b> (Komatsu: ${f.setup.id === 'bench' ? `digging depth ${(f.ratio * 100).toFixed(0)} % of the ${fmtU('len', b.digDepthM, 2)} maximum → ${esc(f.row.name)}` : 'digging above the tracks → below 40 %'}, ${esc(f.col.name)}), typical swing ${f.setup.swingDeg}°.${f.setup.id === 'bench' && b.stickM && +L.benchHeightM > b.stickM + 0.05 ? ` <b>This bench is higher than the ${b.stickM} m stick</b> — CAT recommends no higher than the stick length.` : ''}${cyc ? ` Bucket cycle now <b>${cyc.tc.toFixed(1)} s</b>.` : ''}`;
 }
 function targetCard() {
   const tc = api.targetCalc(); if (!tc.ok) return '';
@@ -511,7 +511,7 @@ function wire() {
     const mat = e.target.closest('[data-mat]');
     if (mat) { api.setMaterial(mat.dataset.mat); afterChange(true); return; }
     const su = e.target.closest('[data-setup]');
-    if (su) { const [i, id] = su.dataset.setup.split(':'); const l = api.state().loaders[+i]; l.setup = id; if (id === 'bench' && !(+l.benchHeightM > 0)) l.benchHeightM = 4.5; afterChange(true); return; }
+    if (su) { const [i, id] = su.dataset.setup.split(':'); const l = api.state().loaders[+i]; l.setup = id; afterChange(true); return; }
     const wx = e.target.closest('[data-sky]');
     if (wx) { const st = api.state(), sk = byId(SKY, wx.dataset.sky); st.site.skyId = sk.id; if (sk.surface) st.site.surfaceId = sk.surface; afterChange(true); return; }
     if (e.target.closest('[data-ped]')) { closePop(); api.editProfile(); return; }

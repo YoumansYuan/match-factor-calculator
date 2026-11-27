@@ -1,6 +1,6 @@
 // Haul-profile editor: draw the elevation profile by hand (or trace it over a screenshot).
 // Left end = loading point, right end = dump. Points are stored in metres (SI) in state.profile.points.
-import { unit, toDisp, toSI, fmt } from './units.js?v=202611271841';
+import { unit, toDisp, toSI, fmt } from './units.js?v=202611271846';
 
 let api = null, pts = [], sel = -1, drag = -1, bg = null, bgOpacity = 0.45;
 const $ = s => document.querySelector(s);
