@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611271846">
+  <link rel="stylesheet" href="css/styles.css?v=202611271930">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -103,7 +103,7 @@
           <div class="resolved" id="road-resolved"></div>
           <label>Speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.speedLimitKmh" data-q="speed" step="1"></label>
           <label>Downhill speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.downhillLimitKmh" data-q="speed" step="1"></label>
-          <label>Downhill limit applies below grade <span class="u">%</span><input type="number" data-bind="site.downhillGradePct" step="0.5"></label>
+          <label>Apply downhill limit on grades steeper than <span class="u">%</span><input type="number" data-bind="site.downhillGradePct" step="0.5" title="Negative = downhill in the direction of travel. −9 means the downhill speed limit is used only on descents steeper than 9 % (e.g. −10 %); gentler descents use the normal speed limit."><small class="muted">e.g. −9 = only on descents steeper than 9 %</small></label>
           <p class="note span3">Elevation for engine altitude deration comes from the haul profile (each segment uses its own elevation; the excavator uses the loading point).</p>
         </div>
       </details>
@@ -278,6 +278,6 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611271846"></script>
+<script type="module" src="js/app.js?v=202611271930"></script>
 </body>
 </html>

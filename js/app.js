@@ -1,10 +1,10 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271846';
-import { siteConditions, hToClock } from './conditions.js?v=202611271846';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611271846';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611271846';
-import { renderEquipment, renderMethod } from './docs.js?v=202611271846';
-import { initVisual, updateVisual } from './visual.js?v=202611271846';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611271846';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271930';
+import { siteConditions, hToClock } from './conditions.js?v=202611271930';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611271930';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611271930';
+import { renderEquipment, renderMethod } from './docs.js?v=202611271930';
+import { initVisual, updateVisual } from './visual.js?v=202611271930';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611271930';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -77,12 +77,16 @@ function targetCalc(r = result) {
   let finish = '';
   const d0 = state.site.date || todayISO();
   const d = new Date(`${d0}T12:00:00Z`); if (!isNaN(d)) { d.setUTCDate(d.getUTCDate() + Math.ceil(calDays)); finish = d.toISOString().slice(0, 10); }
-  return { basis, V, ok: true, dens, tonnes, workDays, calDays, finish, start: d0, bcm: tonnes / md.bank, lcm: tonnes / md.loose };
+  // truck loads: split the tonnes between truck types in proportion to what each type hauls per hour
+  const rates = r.trucks.map(t => t.n * t.A * t.loadT / t.ct), rsum = rates.reduce((a, b) => a + b, 0) || 1;
+  const loads = r.trucks.map((t, i) => ({ name: t.truck.name, loadT: t.loadT, n: Math.ceil(tonnes * rates[i] / rsum / t.loadT) }));
+  const totalLoads = loads.reduce((a, x) => a + x.n, 0);
+  return { basis, V, ok: true, dens, tonnes, workDays, calDays, finish, start: d0, bcm: tonnes / md.bank, lcm: tonnes / md.loose, loads, totalLoads };
 }
 const volU = b => (getSystem() === 'si' ? (b === 'bcm' ? 'BCM' : 'LCM') : (b === 'bcm' ? 'BCY' : 'LCY'));
 function targetText(tc = targetCalc()) {
   if (!tc.ok) return tc.V ? '' : 'Enter a target volume to see how many days the fleet needs.';
-  return `${fmt('vol', tc.V, 0)} ${volU(tc.basis)} × ${fmt('dens', tc.dens, 2)} ${unit('dens')} = <b>${fmtU('mass', tc.tonnes, 0)}</b> (${fmt('vol', tc.bcm, 0)} ${volU('bcm')} · ${fmt('vol', tc.lcm, 0)} ${volU('lcm')}) → <b>${tc.workDays.toFixed(1)} working days</b> at ${fmtU('mass', result.prod.dayT, 0)}/day · about ${Math.ceil(tc.calDays)} calendar days at ${state.ops.daysPerYear} working days/year, finishing around <b>${tc.finish}</b> if started ${tc.start}.`;
+  return `${fmt('vol', tc.V, 0)} ${volU(tc.basis)} × ${fmt('dens', tc.dens, 2)} ${unit('dens')} = <b>${fmtU('mass', tc.tonnes, 0)}</b> (${fmt('vol', tc.bcm, 0)} ${volU('bcm')} · ${fmt('vol', tc.lcm, 0)} ${volU('lcm')}) → <b>${tc.workDays.toFixed(1)} working days</b> at ${fmtU('mass', result.prod.dayT, 0)}/day · about ${Math.ceil(tc.calDays)} calendar days at ${state.ops.daysPerYear} working days/year, finishing around <b>${tc.finish}</b> if started ${tc.start}. Truck loads needed: <b>${tc.totalLoads.toLocaleString('en-US')}</b>${tc.loads.length > 1 ? ` (${tc.loads.map(x => `${x.n.toLocaleString('en-US')} × ${esc(x.name)} at ${fmt('mass', x.loadT, 1)} ${unit('mass')}`).join(' + ')})` : ` at ${fmt('mass', tc.loads[0].loadT, 1)} ${unit('mass')} per load`}.`;
 }
 // Hours per shift for an average truck: where the scheduled time goes (each loss applied once).
 function waterfall(r = result, c = lastCond) {
@@ -299,7 +303,7 @@ function renderTables() {
     ['Bank volume dug', `${fmt('vol', p.tph / md.bank, 0)} ${bcU()}/h`], ['Loose volume at dump', `${fmt('vol', p.tph / md.loose, 0)} ${lcU()}/h`], ['Truck capacity (theoretical)', fmtU('rate', p.truckCapTph, 0)], ['Loader capacity (theoretical)', fmtU('rate', p.loaderCapTph, 0)],
     ['Loader efficiency', `${(p.loaderEff * 100).toFixed(0)} %`], ['Truck efficiency', `${(p.truckEff * 100).toFixed(0)} %`], ['One-way haul', fmtU('len', r.totalHaulM, 0)],
     ['Climb / descent (loaded)', `${fmt('len', rise, 0)} / ${fmt('len', fall, 0)} ${unit('len')}`], ['Rolling resistance · traction', `${r.road.rr.toFixed(1)} % · ${r.road.mu.toFixed(2)}`],
-    ...(tgt.ok ? [['Target', `${fmt('vol', tgt.V, 0)} ${volU(tgt.basis)}`], ['Working days to finish', `${tgt.workDays.toFixed(1)} d (≈ ${tgt.finish})`]] : []),
+    ...(tgt.ok ? [['Target', `${fmt('vol', tgt.V, 0)} ${volU(tgt.basis)}`], ['Working days to finish', `${tgt.workDays.toFixed(1)} d (≈ ${tgt.finish})`], ['Truck loads needed', tgt.totalLoads.toLocaleString('en-US')]] : []),
   ];
   $('#prod-kv').innerHTML = kv.map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('');
   const wf = $('#time-wf'); if (wf) wf.innerHTML = waterfallHTML(waterfall());

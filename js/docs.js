@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271846';
-import { unit, fmt, fmtU, toDisp } from './units.js?v=202611271846';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, SETUPS, KOM_CYCLE_FACTOR, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271930';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611271930';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
@@ -139,6 +139,7 @@ per shift = production × operating time;  per year = × shifts per day × days 
 target: tonnes = target volume × (bank density if BCM, loose density if LCM);  working days = tonnes / (production per day)
    blasted rock and rehandle default to LCM (muck pile / stockpile volume at 2.3 t/m³), other materials to BCM;
    calendar days = working days × 365 / working days per year, counted from the work date
+   truck loads = tonnes split between truck types by their hourly haulage (n × availability × load / cycle) ÷ load per truck, rounded up
 trucks for MF = 1 ≈ trucks / MF;   trucks to deploy = that / mean availability   (MIME 333: required fleet = theoretical / availability)</div>
 <p><b>Date and location.</b> The work date sets a default air temperature (approximate monthly mean, editable) and the sunrise/sunset times at the site latitude/longitude (NOAA approximation, Mountain Time with daylight saving). The dark fraction is the share of all shift hours outside daylight. <b>Water truck rule:</b> mean temperature &gt; 3 °C — available; 0–3 °C — daytime only (half effect, night frost risk); ≤ 0 °C — not available (water freezes on the road). A dry road with no effective water truck raises dust: heavy dust reduces efficiency and caps haul speed; frozen ground raises about half as much dust. Rain or snow removes dust.</p>
 <h3>7. Fuel and CO₂</h3>

@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271846';
-import { hToClock } from './conditions.js?v=202611271846';
-import { byId } from './engine.js?v=202611271846';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271846';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271930';
+import { hToClock } from './conditions.js?v=202611271930';
+import { byId } from './engine.js?v=202611271930';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271930';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -19,7 +19,9 @@ export function initVisual(hooks) {
   api = hooks;
   wire();
   let rw = 0;
-  window.addEventListener('resize', () => { const w = sceneWidth(); if (w !== rw) { rw = w; if (R) buildScene(); } });
+  // only redraw while the Visual tab is showing (a hidden tab measures 0 px wide); redraw when it is shown again
+  window.addEventListener('resize', () => { if (!sceneVisible()) return; const w = sceneWidth(); if (w !== rw) { rw = w; if (R) buildScene(); } });
+  document.addEventListener('click', e => { if (e.target.closest('.tab[data-tab="visual"]')) requestAnimationFrame(() => { if (R && sceneVisible()) { rw = sceneWidth(); buildScene(); } }); });
 }
 
 export function updateVisual(result) {
@@ -36,7 +38,7 @@ const activeLoaders = () => api.state().loaders.map((l, i) => (+l.count > 0 ? i 
 
 // ------------------------------------------------------------------ SVG drawings (original, generic shapes)
 // ------------------------------------------------------------------ brand colours & machine drawings (original, generic side views)
-const brandOf = m => (/^CAT\b/i.test(m.name) ? 'cat' : /deere/i.test(m.name) ? 'jd' : /komatsu/i.test(m.name) ? 'kom' : 'other');
+const brandOf = m => (/^CAT\b/i.test(m.name) ? 'cat' : /deere/i.test(m.name) ? 'jd' : /komatsu/i.test(m.name) ? 'kom' : /volvo/i.test(m.name) ? 'volvo' : 'other');
 const brandFill = m => `var(--b-${brandOf(m)})`;
 const truckColor = i => { const t = api && api.state().trucks[i]; const m = t && byId(TRUCKS, t.modelId); return m ? brandFill(m) : 'var(--accent)'; };
 const tyre = (x, y, r) => `<g class="tyre"><circle cx="${x}" cy="${y}" r="${r}" class="tw"/><circle cx="${x}" cy="${y}" r="${r - 1.2}" class="tread"/><circle cx="${x}" cy="${y}" r="${r * 0.5}" class="rim"/><circle cx="${x}" cy="${y}" r="${r * 0.18}" class="hub"/></g>`;
@@ -121,12 +123,13 @@ function excavatorSVG(model, pose = 'dump') {
 }
 
 // ------------------------------------------------------------------ static scene: excavator + a line of trucks
+function sceneVisible() { const el = $('#scene-wrap'); return !!(el && el.clientWidth > 0); }
 function sceneWidth() { const el = $('#scene-wrap'); const w = el ? el.clientWidth : 1000; return clamp(Math.round(w), 640, 1100); }
 const shortName = m => m.name.replace(/^(CAT|John Deere)\s+/i, '');
 const truckScale = m => clamp(Math.sqrt(m.ratedPayloadKg / 90000), 0.74, 1.05);
 
 function buildScene() {
-  const svg = $('#scene'); if (!svg) return;
+  const svg = $('#scene'); if (!svg || !sceneVisible()) return;
   const st = api.state();
   const W = sceneWidth(), H = 270, y0 = 212;
   const yB = y0 - 58, crest = 160, toe = 168;            // bench top for an excavator standing on the dig face
@@ -413,6 +416,7 @@ function renderPop() {
         <label class="check"><input type="checkbox" data-bind="site.waterTruck" ${c && c.water.status === 'no' ? 'disabled' : ''}> Water truck for dust control${c && c.water.status === 'no' ? ' <small>(too cold, water freezes)</small>' : c && c.water.status === 'day' ? ' <small>(daytime only)</small>' : ''}</label>
         <label>Speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.speedLimitKmh" data-q="speed"></label>
         <label>Downhill speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.downhillLimitKmh" data-q="speed"></label>
+        <label>Apply it on descents steeper than <span class="u">% (e.g. −9)</span><input type="number" step="0.5" data-bind="site.downhillGradePct"></label>
       </div>
       <p class="note" id="pop-live">${roadNote()}</p>
       <h4>Road shape (distance and elevation)</h4>
@@ -452,7 +456,7 @@ function setupNote(i) {
 }
 function targetCard() {
   const tc = api.targetCalc(); if (!tc.ok) return '';
-  return `<div class="v-stat"><span class="lbl">Target ${fmt('vol', tc.V, 0)} ${api.volU(tc.basis)}</span><b>${tc.workDays.toFixed(1)} days</b><small>working days · finishes ≈ ${tc.finish}</small></div>`;
+  return `<div class="v-stat"><span class="lbl">Target ${fmt('vol', tc.V, 0)} ${api.volU(tc.basis)}</span><b>${tc.workDays.toFixed(1)} days</b><small>working days · ${tc.totalLoads.toLocaleString('en-US')} truck loads · finishes ≈ ${tc.finish}</small></div>`;
 }
 function matNote() {
   const st = api.state(), md = api.matDerived(), dd = unit('dens') === 't/m³' ? 2 : 0;

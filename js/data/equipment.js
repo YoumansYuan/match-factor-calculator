@@ -6,6 +6,9 @@ export const SOURCES = {
   CAT47: 'Caterpillar Performance Handbook, Edition 47 (2017)',
   CAT745WEB: 'cat.com — 745 Articulated Truck specifications (current model, Tier 4 Final / Stage V)',
   JD460: 'John Deere 460 P-Tier ADT spec sheet MT460PAU (deere.com)',
+  VOLVOA60H: 'Volvo A60H articulated hauler product guide, ref. 20062762_A (volvoce.com)',
+  VOLVOA40: 'Volvo A40 articulated hauler product guide, ref. 20064352_D (volvoce.com)',
+  JD870: 'John Deere 870 P-Tier excavator spec sheet ME870PAJ (deere.com, 22-08)',
   CAT385C: 'Cat 385C L Hydraulic Excavator specalog',
   KOM32: 'Komatsu Specifications & Application Handbook, Edition 32 (2019) — excavator conversion factor p.15A-10, backhoe vs same-floor loading p.3A-131',
   MIME333: 'McGill MIME 333 Materials Handling — Ch.3 Loading & Haulage Equipment (Mitri & Sasmito)',
@@ -126,6 +129,66 @@ export const TRUCKS = [
     },
     estimate: { rimpull: true, retarder: true, altitude: true },
   },
+  {
+    id: 'volvoa40',
+    name: 'Volvo A40',
+    type: 'Articulated dump truck (6×6)',
+    emptyKg: 31400,
+    ratedPayloadKg: 39000,
+    gmwKg: 70310,
+    heapedM3: 24.0, // 2:1 heaped, standard body
+    struckM3: 18.7,
+    tailgateHeapedM3: 25.1,
+    netPowerKw: 347,
+    grossPowerKw: 350,
+    topSpeedKmh: 57,
+    gears: 9,
+    gearSpeedsKmh: [5.8, 8.5, 10.4, 15.0, 21.6, 27.3, 36.1, 47.8, 57.0],
+    driveAxle: 'all (6×6, automatic 6×4/6×6)',
+    driverWeightFracEmpty: 1.0,
+    driverWeightFracLoaded: 1.0,
+    loadingHeightM: 3.25,
+    bodyRaiseS: 12,
+    bodyLowerS: 10,
+    tires: '29.5R25',
+    rimpull: null, // generated from net power (Volvo publishes no rimpull chart), see buildGeneratedCurves()
+    retarder: null,
+    retarderKw: 540,
+    altitude: [[0, 1], [3000, 1], [4600, 0.85]],
+    defaults: { spotMin: 0.6, dumpMin: 1.0 },
+    src: { specs: 'VOLVOA40 product guide 20064352_D (current A40): D13J 350 kW gross @1800 rpm, payload 39 000 kg, empty 31 400 kg, loaded 70 310 kg, body 18.7 / 24.0 m³ (25.1 with tailgate), 9 gears 5.8–57 km/h, tipping 12 s / lowering 10 s', rimpull: 'Generated from net power (not published by Volvo)', retarder: 'Generated: ≈ 540 kW continuous (CAT 745C class) — Volvo gives no figure', altitude: 'Not published — assumed no derate below 3000 m' },
+    estimate: { rimpull: true, retarder: true, altitude: true, netPower: 'Net power not published — 347 kW assumed (gross 350 kW × 0.99, same ratio as the A60H).', loadingHeight: 'Loading height not in the Volvo product guide — ≈ 3.25 m estimated (A40 class); check against the dealer drawing.' },
+  },
+  {
+    id: 'volvoa60h',
+    name: 'Volvo A60H',
+    type: 'Articulated dump truck (6×6)',
+    emptyKg: 43750,
+    ratedPayloadKg: 55000,
+    gmwKg: 98750,
+    heapedM3: 33.6, // 2:1 heaped, standard body
+    struckM3: 25.8,
+    tailgateHeapedM3: 35.1,
+    netPowerKw: 467,
+    grossPowerKw: 470,
+    topSpeedKmh: 55,
+    gears: 6,
+    gearSpeedsKmh: [7, 10, 13, 19, 26, 55],
+    driveAxle: 'all (6×6, automatic 6×4/6×6)',
+    driverWeightFracEmpty: 1.0,
+    driverWeightFracLoaded: 1.0,
+    loadingHeightM: 3.65,
+    bodyRaiseS: 13,
+    bodyLowerS: 10,
+    tires: '33.25R29',
+    rimpull: null, // generated from net power (Volvo publishes no rimpull chart), see buildGeneratedCurves()
+    retarder: null,
+    retarderKw: 715,
+    altitude: [[0, 1], [3000, 1], [4600, 0.85]],
+    defaults: { spotMin: 0.6, dumpMin: 1.0 },
+    src: { specs: 'VOLVOA60H product guide 20062762_A: D16J 467 kW net @1800 rpm, payload 55 000 kg, empty 43 750 kg, loaded 98 750 kg, body 25.8 / 33.6 m³ (35.1 with tailgate), gears 7–55 km/h, tipping 13 s / lowering 10 s', rimpull: 'Generated from published net power (not published by Volvo)', retarder: 'Generated: ≈ 715 kW continuous (CAT 745C class 550 kW scaled by engine power) — Volvo gives no figure for its engine brake', altitude: 'Not published — assumed no derate below 3000 m' },
+    estimate: { rimpull: true, retarder: true, altitude: true, loadingHeight: 'Loading height not in the Volvo product guide — ≈ 3.65 m estimated from body size; check against the dealer drawing.' },
+  },
 ];
 
 export const LOADERS = [
@@ -181,6 +244,31 @@ export const LOADERS = [
       altitude: 'Not in CAT47 deration table — assumed same C18 behaviour (no derate below 3000 m)',
     },
     estimate: { loadHeight: 'Loading heights, digging depths and stick lengths assumed equal to the 390F L equivalent boom/stick (same front-linkage family).', altitude: true, cycle: true },
+  },
+  {
+    id: 'jd870p',
+    name: 'John Deere 870 P-Tier',
+    type: 'Hydraulic excavator (backhoe)',
+    netPowerKw: 382,
+    operatingWeightKg: [85600, 85600],
+    engine: 'Isuzu 6WG1 (15.7 L), FT4',
+    swingRpm: 7.8,
+    buckets: [ // max dumping height = loading height; digging depth and arm length per boom/arm from the Deere spec sheet
+      { id: 'b44', label: '3.49 m³ (8.4 m boom, 4.4 m arm) — Deere standard', m3: 3.49, loadHeightM: 9.74, digDepthM: 9.57, stickM: 4.4 },
+      { id: 'b37', label: '4.0 m³ (8.4 m boom, 3.7 m arm)', m3: 4.0, loadHeightM: 9.08, digDepthM: 8.87, stickM: 3.7 },
+      { id: 'me295', label: '4.6 m³ (7.1 m ME boom, 2.95 m ME arm)', m3: 4.6, loadHeightM: 8.13, digDepthM: 7.14, stickM: 2.95 },
+      { id: 'r44', label: '2.7 m³ (10.0 m reach boom, 4.4 m arm)', m3: 2.7, loadHeightM: 10.81, digDepthM: 11.16, stickM: 4.4 },
+    ],
+    defaultBucket: 'b37',
+    cycleS: { A: 24, B: 28, C: 32, D: 38, E: 45 },
+    altitude: [[0, 1], [3000, 1], [4600, 0.9]],
+    fuelLoadFactor: 0.55,
+    src: {
+      specs: 'JD870 spec sheet ME870PAJ (22-08): 382 kW net @1800 rpm, 85 600 kg, swing 7.8 rpm; max digging depth / max dumping height for 8.4/3.7, 8.4/4.4, 7.1 ME/2.95 ME and 10.0/4.4 boom/arm',
+      cycle: 'Same class as CAT 390F L (382 vs 391 kW, 85.6 vs 86 t) — CAT47 p.7-246/7-248 cycle bands used',
+      altitude: 'Not published — assumed no derate below 3000 m',
+    },
+    estimate: { buckets: 'Deere lists only the 3.49 m³ bucket (4.4 m arm); the 4.0, 4.6 (ME) and 2.7 m³ (reach) sizes are typical for this class — check with the dealer.', cycle: true, altitude: true },
   },
 ];
 
@@ -290,7 +378,7 @@ export function buildGeneratedCurves() {
       });
     }
     if (!t.retarder) {
-      const pret = 550; // kW continuous
+      const pret = t.retarderKw || 550; // kW continuous
       t.retarder = t.gearSpeedsKmh.map(v => [v, +Math.min(30, pret / (v / 3.6) / 9.81).toFixed(2)]);
     }
   }

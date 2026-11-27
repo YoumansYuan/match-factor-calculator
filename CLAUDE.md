@@ -27,6 +27,7 @@ mixed fleets and haul-profile CSV upload. Metric/Imperial toggle (state always S
 
 ## Decisions already made (do not re-litigate without asking)
 - v1 equipment = **CAT 390F L, CAT 385C L** (excavators), **CAT 777E, CAT 745 (current model), John Deere 460 P-Tier** (trucks).
+- Added 2026-11-27: **John Deere 870 P-Tier** excavator (spec sheet ME870PAJ; only the 3.49 m³ bucket is published — other bucket sizes flagged estimate; dig depth / dump height per boom-arm from Deere), **Volvo A60H** and **Volvo A40** (current, product guides 20062762_A / 20064352_D; rimpull & retarder generated from power, loading height estimated, A40 net power = gross × 0.99). Volvo brand colour = blue (`--b-volvo`).
   - User first asked for "latest CAT 390 and 380": CAT has no current 390/380 (390F was replaced by 395 in 2020; CAT never made a 380 — that is a JD model). User chose 390F L + 385C L.
 - Every number carries a source; values not published by the OEM are flagged `estimate` in data and shown with a badge.
   - JD 460 P-Tier rimpull & retarder curves are **generated** (η = 0.83 × 359 kW / v, stall cap 0.59 × GMW; retarder ≈ 550 kW at JD gear speeds) — method fitted on the digitised CAT 745C curve.
