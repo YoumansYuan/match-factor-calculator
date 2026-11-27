@@ -205,17 +205,20 @@ export function matchPair(truck, truckIn, loader, model, material, ops) {
   const bucketM3 = loader.bucketM3 * ff;
   const bucketT = bucketM3 * material.looseTm3;
   const ratedT = (truckIn.payloadKg || truck.ratedPayloadKg) / 1000;
-  const nW = ratedT / bucketT, nV = truck.heapedM3 / bucketM3;
+  // body fill factor: share of the SAE 2:1 heaped body volume actually usable (sticky / blocky material, carry-back, spillage)
+  const bf = truckIn.bodyFill != null && truckIn.bodyFill !== '' && +truckIn.bodyFill > 0 ? +truckIn.bodyFill : 1;
+  const capM3 = truck.heapedM3 * bf;
+  const nW = ratedT / bucketT, nV = capM3 / bucketM3;
   const raw = Math.min(nW, nV);
   const governs = nW <= nV ? 'weight' : 'volume';
   const n = passCount(raw, ops.passRule);
   // material beyond the heaped body volume spills, so the carried load is capped by volume
-  const actualT = Math.min(n * bucketT, truck.heapedM3 * material.looseTm3);
+  const actualT = Math.min(n * bucketT, capM3 * material.looseTm3);
   const tc = loaderCycleS(loader, model, ops, material.frozen);
   const loadTimeS = ops.loadTimeMethod === 'komatsu' ? (Math.max(0, n - 1) + ops.firstPassFrac) * tc : n * tc;
   const overloadPct = (actualT / ratedT - 1) * 100;
   const heightOk = (loader.loadHeightM || 99) >= truck.loadingHeightM + 0.5;
-  return { ff, bucketM3, bucketT, nW, nV, raw, n, governs, loadT: actualT, ratedT, overloadPct, tc, loadTimeS, heightOk, volFillPct: n * bucketM3 / truck.heapedM3 * 100 };
+  return { ff, bf, capM3, bucketM3, bucketT, nW, nV, raw, n, governs, loadT: actualT, ratedT, overloadPct, tc, loadTimeS, heightOk, volFillPct: n * bucketM3 / truck.heapedM3 * 100 };
 }
 
 // ---------------------------------------------------------------- match factor (Burt & Caccetta, corrected 2008)

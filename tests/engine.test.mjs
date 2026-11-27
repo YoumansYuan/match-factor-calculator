@@ -1,7 +1,7 @@
 // Run: node tests/engine.test.mjs
 import { readFileSync } from 'node:fs';
-import { matchFactor, passCount, steadySpeed, computeScenario, buildSegments, interp } from '../js/engine.js';
-import { TRUCKS } from '../js/data/equipment.js';
+import { matchFactor, passCount, steadySpeed, computeScenario, buildSegments, interp, matchPair } from '../js/engine.js';
+import { TRUCKS, LOADERS } from '../js/data/equipment.js';
 
 let fails = 0;
 const near = (name, got, exp, tol) => {
@@ -68,6 +68,20 @@ const steady = computeScenario({ site: { altitudeM: 1700, tempC: 10, roadId: 'fi
 const st = steady.trucks[0];
 console.log(`  steady-state (textbook) haul ${(st.haul.t / 60).toFixed(2)} min, return ${(st.ret.t / 60).toFixed(2)} min`);
 if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be slower than steady-state (acceleration)'); } else console.log('PASS  simulation slower than steady-state (accounts for acceleration/braking)');
+
+// 11. Truck body fill factor: 745 (26 m³ heaped) with till 1.8 t/m³, 4.6 m³ bucket × 0.9 → volume governs;
+//     body fill 0.85 shrinks usable volume to 22.1 m³ → nV = 22.1 / 4.14 = 5.34 and load capped at 22.1 × 1.8 = 39.8 t
+{
+  const base = { truckIn: { modelId: 'cat745' }, loader: { bucketM3: 4.6, jobCond: 'C', swingDeg: 90, conditionId: 'good' } };
+  const mat = { looseTm3: 1.8, fill: 0.9 };
+  const ops = { passRule: 'third', loadTimeMethod: 'n', frozenFillMult: 0.9, frozenCycleMult: 1.1 };
+  const t745 = TRUCKS.find(x => x.id === 'cat745'), m390 = LOADERS.find(x => x.id === 'cat390fl');
+  const full = matchPair(t745, { ...base.truckIn }, { ...base.loader, conditionId: 'good' }, m390, mat, ops);
+  const cut = matchPair(t745, { ...base.truckIn, bodyFill: 0.85 }, { ...base.loader }, m390, mat, ops);
+  near('body fill 1.0 → passes by volume nV', full.nV, 26.0 / (4.6 * 0.9), 0.01);
+  near('body fill 0.85 → passes by volume nV', cut.nV, 26.0 * 0.85 / (4.6 * 0.9), 0.01);
+  if (!(cut.loadT <= 26.0 * 0.85 * 1.8 + 1e-9)) { fails++; console.log('FAIL  body fill should cap carried load'); } else console.log('PASS  body fill 0.85 caps carried load at usable volume');
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
 process.exit(fails ? 1 : 0);

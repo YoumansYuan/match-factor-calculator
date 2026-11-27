@@ -68,9 +68,10 @@ export function renderMethod(el) {
 <h3>1. Material, bucket payload and passes</h3>
 <div class="eq">bucket payload (t) = heaped bucket (m³) × fill factor × loose density (t/m³)
 passes by weight  nW = rated truck payload / bucket payload
-passes by volume  nV = heaped body (m³) / (heaped bucket × fill factor)
+usable body (m³) = heaped body SAE 2:1 (m³) × body fill factor   (default 100 %)
+passes by volume  nV = usable body (m³) / (heaped bucket × fill factor)
 raw passes = min(nW, nV)       — the governing limit is shown in the results</div>
-<p>Rounding options: Burt &amp; Caccetta rule of thumb (add the last pass only if the remainder ≥ ⅓ bucket), always round up, round down, or fractional. The carried load is capped at the heaped body volume (excess spills). Pairs outside 3–6 passes, loads over +10 % of rated (CAT 10/10/20 payload policy) and buckets that cannot clear the truck loading height + 0.5 m are flagged. Frozen/cemented material reduces fill factor and slows digging (MIME 333 Ch.2: freezing impairs loading).</p>
+<p>Rounding options: Burt &amp; Caccetta rule of thumb (add the last pass only if the remainder ≥ ⅓ bucket), always round up, round down, or fractional. The carried load is capped at the usable body volume (excess spills). The <b>bucket fill factor</b> (per material, overridable per loading unit) is how full the bucket is compared with its SAE heaped rating; the <b>body fill factor</b> (per truck type) is how much of the truck's SAE 2:1 heaped volume can really be used — lower it for sticky or blocky material, carry-back, or when loads are kept off the tailgate and sideboards to avoid spillage. Pairs outside 3–6 passes, loads over +10 % of rated (CAT 10/10/20 payload policy) and buckets that cannot clear the truck loading height + 0.5 m are flagged. Frozen/cemented material reduces fill factor and slows digging (MIME 333 Ch.2: freezing impairs loading).</p>
 
 <h3>2. Loader cycle and truck loading time</h3>
 <div class="eq">loader cycle tc = [handbook cycle for job condition A–E + swing adjustment] × machine-condition multiplier

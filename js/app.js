@@ -2,6 +2,7 @@ import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS,
 import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp } from './engine.js';
 import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js';
 import { renderEquipment, renderMethod } from './docs.js';
+import { initVisual, updateVisual } from './visual.js';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -9,7 +10,7 @@ const DEFAULTS = {
   materialId: 'till',
   material: { ...pickMat('till'), frozen: false },
   loaders: [{ modelId: 'cat390fl', bucketId: 'sd46', count: 1, jobCond: 'C', swingDeg: 90, conditionId: 'good', availabilityPct: '', cycleOverrideS: '', fillOverride: '' }],
-  trucks: [{ modelId: 'cat745', count: 6, conditionId: 'good', availabilityPct: '', payloadKg: '', spotMin: '', dumpMin: '' }],
+  trucks: [{ modelId: 'cat745', count: 6, conditionId: 'good', availabilityPct: '', payloadKg: '', bodyFillPct: '', spotMin: '', dumpMin: '' }],
   profile: { segmentM: 100, loadAreaM: 50, dumpAreaM: 50, reverse: false, points: null, name: '' },
   ops: { shiftH: 10, shiftsPerDay: 2, daysPerYear: 300, jobEffMin: 50, utilizationPct: 85, bunching: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', mfUseAvailability: false,
     brakingDecel: 0.6, massFactor: 1.05, idleLF: 0.15, hotRetarderDeratePerC: 0.01, firstPassFrac: 0.2, frozenFillMult: 0.9, frozenCycleMult: 1.1 },
@@ -94,6 +95,7 @@ function renderRows() {
       <label>Machine condition<select data-bind="trucks.${i}.conditionId">${opt(CONDITIONS, t.conditionId)}</select></label>
       <label>Availability <span class="u">%</span><input type="number" step="1" data-bind="trucks.${i}.availabilityPct" placeholder="${Math.round(cond.availability * 100)}"></label>
       <label>Rated payload <span class="u">(${unit('kg')})</span><input type="number" step="100" data-bind="trucks.${i}.payloadKg" data-q="kg" placeholder="${round(toDisp('kg', m.ratedPayloadKg), 0)}"></label>
+      <label>Body fill factor <span class="u">%</span><input type="number" step="1" min="40" max="110" data-bind="trucks.${i}.bodyFillPct" placeholder="100"></label>
       <label>Spot / exchange <span class="u">min</span><input type="number" step="0.05" data-bind="trucks.${i}.spotMin" placeholder="${m.defaults.spotMin}"></label>
       <label>Maneuver + dump <span class="u">min</span><input type="number" step="0.05" data-bind="trucks.${i}.dumpMin" placeholder="${m.defaults.dumpMin}"></label>
     </div><div class="tag">${esc(m.type)} · rated ${fmtU('kg', m.ratedPayloadKg, 0)} · heaped ${fmtU('vol', m.heapedM3, 1)} · empty ${fmtU('kg', m.emptyKg, 0)} · net ${fmtU('power', m.netPowerKw, 0)} · top ${fmtU('speed', m.topSpeedKmh, 0)}${Object.keys(m.estimate).length ? ' · <span class="badge est">some curves estimated</span>' : ''}</div></div>`;
@@ -113,7 +115,7 @@ function toEngineInput() {
         conditionId: l.conditionId, availability: l.availabilityPct === '' ? '' : +l.availabilityPct / 100, cycleOverrideS: l.cycleOverrideS || '', fillOverride: l.fillOverride || '' };
     }),
     trucks: s.trucks.map(t => ({ modelId: t.modelId, count: +t.count || 0, conditionId: t.conditionId, availability: t.availabilityPct === '' ? '' : +t.availabilityPct / 100,
-      payloadKg: t.payloadKg === '' ? null : +t.payloadKg, spotMin: t.spotMin === '' ? undefined : +t.spotMin, dumpMin: t.dumpMin === '' ? undefined : +t.dumpMin })),
+      payloadKg: t.payloadKg === '' || t.payloadKg == null ? null : +t.payloadKg, bodyFill: t.bodyFillPct === '' || t.bodyFillPct == null ? '' : +t.bodyFillPct / 100, spotMin: t.spotMin === '' ? undefined : +t.spotMin, dumpMin: t.dumpMin === '' ? undefined : +t.dumpMin })),
     profile: { ...s.profile, points: s.profile.points },
     ops: { ...s.ops, jobEff: s.ops.jobEffMin / 60, utilization: s.ops.utilizationPct / 100 },
   };
@@ -132,6 +134,7 @@ function run() {
   if (!state.profile.points) return;
   try { result = computeScenario(toEngineInput()); } catch (e) { $('#warnings').innerHTML = `<b>Error:</b> ${esc(e.message)}`; console.error(e); return; }
   renderTags(); renderKPIs(); renderTables(); renderCharts(); renderProfileSummary();
+  updateVisual(result);
 }
 
 function renderTags() {
@@ -183,7 +186,7 @@ function renderTables() {
     rows += `<tr><td>${esc(t.truck.name)} × ${esc(L.model.name)}</td><td>${fmt('mass', p.bucketT, 2)}</td><td>${p.raw.toFixed(2)} <small>(${p.governs})</small></td><td><b>${(+p.n).toFixed(state.ops.passRule === 'exact' ? 2 : 0)}</b></td><td>${fmt('mass', p.loadT, 1)}</td>
       <td><span class="pill ${p.overloadPct > 10 ? 'bad' : ''}">${(100 + p.overloadPct).toFixed(0)} %</span></td><td>${p.volFillPct.toFixed(0)} %</td><td>${p.tc.toFixed(1)}</td><td>${p.loadTimeS.toFixed(0)}</td><td><span class="pill ${p.heightOk ? 'ok' : 'bad'}">${p.heightOk ? 'OK' : 'low'}</span></td></tr>`;
   }));
-  $('#tbl-pairs').innerHTML = `<thead><tr><th>Pair</th><th>Bucket (${unit('mass')})</th><th>Raw passes</th><th>Passes</th><th>Load (${unit('mass')})</th><th>% rated</th><th>Heaped fill</th><th>Cycle (s)</th><th>Load time (s)</th><th>Height</th></tr></thead><tbody>${rows}</tbody>`;
+  $('#tbl-pairs').innerHTML = `<thead><tr><th>Pair</th><th>Bucket (${unit('mass')})</th><th>Raw passes</th><th>Passes</th><th>Load (${unit('mass')})</th><th>% rated</th><th>Heaped body used</th><th>Cycle (s)</th><th>Load time (s)</th><th>Height</th></tr></thead><tbody>${rows}</tbody>`;
 
   const p = r.prod, bank = state.material.looseTm3 * (1 + state.material.swellPct / 100);
   const rise = r.segs.reduce((s, x) => s + Math.max(0, x.z1 - x.z0), 0), fall = r.segs.reduce((s, x) => s + Math.max(0, x.z0 - x.z1), 0);
@@ -319,7 +322,7 @@ function wire() {
     const rm = e.target.closest('[data-rm]');
     if (rm) { const [k, i] = rm.dataset.rm.split('.'); state[k].splice(+i, 1); renderRows(); schedule(); }
   });
-  $('#sel-material').addEventListener('change', e => { state.materialId = e.target.value; state.material = { ...pickMat(e.target.value), frozen: state.material.frozen }; renderRows(); schedule(); });
+  $('#sel-material').addEventListener('change', e => { setMaterial(e.target.value); renderRows(); schedule(); });
   $('#add-loader').onclick = () => { state.loaders.push({ ...clone(DEFAULTS.loaders[0]), modelId: 'cat385cl', bucketId: 'hb46' }); renderRows(); schedule(); };
   $('#add-truck').onclick = () => { state.trucks.push({ ...clone(DEFAULTS.trucks[0]), modelId: 'jd460p', count: 2 }); renderRows(); schedule(); };
   $('#profile-sample').onclick = loadSample;
@@ -339,6 +342,10 @@ function wire() {
   $('#scenario-file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { state = Object.assign(clone(DEFAULTS), JSON.parse(await f.text())); boot(); } catch (err) { alertBox(`Could not open scenario: ${err.message}`); } e.target.value = ''; };
   $('#btn-reset').onclick = () => { const pts = state.profile.points, nm = state.profile.name; state = clone(DEFAULTS); state.profile.points = pts; state.profile.name = nm; boot(); };
 }
+function setMaterial(id) { state.materialId = id; state.material = { ...pickMat(id), frozen: state.material.frozen }; }
+async function loadProfileFile(f) {
+  const p = parseProfile(await f.text()); state.profile.points = p.points; state.profile.name = `${f.name} (${p.kind}, ${p.points.length} points)`; $('#profile-name').textContent = state.profile.name;
+}
 function alertBox(msg) { $('#warnings').innerHTML = `<b>${esc(msg)}</b>`; }
 function renderDocs() { renderEquipment($('#equip-content')); renderMethod($('#method-content')); }
 
@@ -350,5 +357,9 @@ function boot() {
   if (!state.profile.points) loadSample(); else run();
 }
 wire();
+initVisual({
+  state: () => state, getPath: p => getPath(state, p), setPath: (p, v) => setPath(state, p, v), schedule, renderRows, renderBound, normaliseRows, setMaterial,
+  newTruck: () => clone(DEFAULTS.trucks[0]), newLoader: () => clone(DEFAULTS.loaders[0]), loadSample, loadProfileFile,
+});
 boot();
 try { const t = localStorage.getItem('mfc-tab'); if (t) document.querySelector(`.tab[data-tab="${t}"]`)?.click(); } catch (e) { /* ignore */ }

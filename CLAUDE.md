@@ -12,10 +12,11 @@ Truck–loader match factor, haul cycle, fleet production, fuel/CO₂, with OEM 
 mixed fleets and haul-profile CSV upload. Metric/Imperial toggle (state always SI internally).
 
 ## Files
-- `index.html` — shell, 3 tabs (Calculator / Equipment Data / Method & Sources)
+- `index.html` — shell, 4 tabs (Visual [default] / Detailed / Equipment Data / Method & Sources) + `<dialog id="pop">` used by Visual mode
 - `css/styles.css` — light + dark (prefers-color-scheme), mobile-safe (no horizontal scroll at 390 px)
 - `js/engine.js` — pure calculation engine (testable in Node). Key functions: `computeScenario`, `travel`, `steadySpeed`, `matchPair`, `matchFactor`, `production`, `sweepTrucks`, `buildSegments`
 - `js/app.js` — UI binding (`data-bind` paths into `state`, `data-q` = unit quantity), rows, charts, CSV/JSON import-export, localStorage key `mfc-state-v1`
+- `js/visual.js` — friendly Visual mode for non-engineers: animated SVG mine scene (discrete-event sim of trucks/loader queue driven by engine results), click excavator/truck/material face/road → dialog to change it, fleet chips, plain-language verdict + "Add/Remove N trucks" suggestion. Uses the same `state` and `data-bind` binding as the detailed view (hooks passed from app.js via `initVisual`).
 - `js/units.js` — unit conversions; `js/docs.js` — Equipment Data + Method tabs (method text must match engine)
 - `js/data/equipment.js` — TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS, SOURCES
 - `data/sample-profile-evr.csv` — sample haul profile (see below)
@@ -31,6 +32,8 @@ mixed fleets and haul-profile CSV upload. Metric/Imperial toggle (state always S
   - Till density (loose 1.8 t/m³, swell 22 %) is a typical value — user should replace with site data. Blasted rock 2.3 and coal 1.3 t/m³ loose were given by the user.
   - Machine-condition presets (availability / power factor / cycle multiplier) and weather RR/traction modifiers are planning estimates.
 - Match factor uses **Burt & Caccetta 2008 corrigendum eq.16** (the 2007 paper's §4 formula is wrong; corrected example = 0.928).
+- Fill factors: **bucket fill factor** per material (overridable per loader); **truck body fill factor** per truck type (`trucks[i].bodyFillPct`, default 100 % of SAE 2:1 heaped) — usable body volume = heaped × body fill, used for passes-by-volume and the volume cap on carried load (added 2026-11-27).
+- UI is aimed at non-engineers who know their inputs (user request 2026-11-27): Visual tab is the default; Detailed tab keeps every input.
 - Pass rule default = Burt & Caccetta "add last pass if remainder ≥ ⅓ bucket"; carried load capped by heaped volume.
 - Default travel model = rimpull simulation with acceleration/braking (≤5 m steps); "steady" mode = textbook d/v for checking hand calcs.
 - Haul profile: first point = loading point, last = dump; loaded haul goes first→last, empty returns. Profile resampled to `segmentM` (default 100 m) to remove digitising noise.
