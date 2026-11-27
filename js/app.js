@@ -1,12 +1,12 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272128';
-import { siteConditions, hToClock } from './conditions.js?v=202611272128';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272128';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272128';
-import { renderEquipment, renderMethod } from './docs.js?v=202611272128';
-import { initVisual, updateVisual } from './visual.js?v=202611272128';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272128';
-import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272128';
-import { CLIMATE } from './data/equipment.js?v=202611272128';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272133';
+import { siteConditions, hToClock } from './conditions.js?v=202611272133';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272133';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272133';
+import { renderEquipment, renderMethod } from './docs.js?v=202611272133';
+import { initVisual, updateVisual } from './visual.js?v=202611272133';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272133';
+import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272133';
+import { CLIMATE } from './data/equipment.js?v=202611272133';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -74,7 +74,7 @@ function setupTag(l) {
 }
 // Target volume → tonnes → working days (at the production rate of the current inputs)
 const BASES = [{ id: 'auto', name: 'Auto (LCM for blasted rock / rehandle, BCM otherwise)' }, { id: 'bcm', name: 'Bank volume dug (BCM)' }, { id: 'lcm', name: 'Loose volume (LCM, as in the truck / at the dump)' }];
-function targetCalc(r = result) {
+function targetCalc(r = result, useSeason = true) {
   const t = state.target || {}, md = matDerived(), def = byId(MATERIALS, state.materialId) || {};
   const basis = t.basis === 'bcm' || t.basis === 'lcm' ? t.basis : (def.blasted ? 'lcm' : 'bcm');
   const V = +t.volume || 0;
@@ -89,12 +89,20 @@ function targetCalc(r = result) {
   const rates = r.trucks.map(t => t.n * t.A * t.loadT / t.ct), rsum = rates.reduce((a, b) => a + b, 0) || 1;
   const loads = r.trucks.map((t, i) => ({ name: t.truck.name, loadT: t.loadT, n: Math.ceil(tonnes * rates[i] / rsum / t.loadT) }));
   const totalLoads = loads.reduce((a, x) => a + x.n, 0);
-  return { basis, V, ok: true, dens, tonnes, workDays, calDays, finish, start: d0, bcm: tonnes / md.bank, lcm: tonnes / md.loose, loads, totalLoads };
+  const out = { basis, V, ok: true, dens, tonnes, workDays, calDays, finish, start: d0, bcm: tonnes / md.bank, lcm: tonnes / md.loose, loads, totalLoads, seasonal: false };
+  // with the seasonal schedule on, days and finish date come from the month-by-month weather (follows the slider)
+  const sr = useSeason && state.season && state.season.on ? seasonResult : null;
+  if (sr && sr.rows.length) {
+    out.seasonal = true;
+    if (sr.finish) { out.workDays = sr.finish.workDays; out.finish = sr.finish.date; out.calDays = (Date.parse(sr.finish.date) - Date.parse(d0)) / 864e5 + 1; }
+    else { out.notReached = true; out.finish = 'not reached in the window'; }
+  }
+  return out;
 }
 const volU = b => (getSystem() === 'si' ? (b === 'bcm' ? 'BCM' : 'LCM') : (b === 'bcm' ? 'BCY' : 'LCY'));
 function targetText(tc = targetCalc()) {
   if (!tc.ok) return tc.V ? '' : 'Enter a target volume to see how many days the fleet needs.';
-  return `${fmt('vol', tc.V, 0)} ${volU(tc.basis)} × ${fmt('dens', tc.dens, 2)} ${unit('dens')} = <b>${fmtU('mass', tc.tonnes, 0)}</b> (${fmt('vol', tc.bcm, 0)} ${volU('bcm')} · ${fmt('vol', tc.lcm, 0)} ${volU('lcm')}) → <b>${tc.workDays.toFixed(1)} working days</b> at ${fmtU('mass', result.prod.dayT, 0)}/day · about ${Math.ceil(tc.calDays)} calendar days at ${state.ops.daysPerYear} working days/year, finishing around <b>${tc.finish}</b> if started ${tc.start}. Truck loads needed: <b>${tc.totalLoads.toLocaleString('en-US')}</b>${tc.loads.length > 1 ? ` (${tc.loads.map(x => `${x.n.toLocaleString('en-US')} × ${esc(x.name)} at ${fmt('mass', x.loadT, 1)} ${unit('mass')}`).join(' + ')})` : ` at ${fmt('mass', tc.loads[0].loadT, 1)} ${unit('mass')} per load`}.`;
+  return `${fmt('vol', tc.V, 0)} ${volU(tc.basis)} × ${fmt('dens', tc.dens, 2)} ${unit('dens')} = <b>${fmtU('mass', tc.tonnes, 0)}</b> (${fmt('vol', tc.bcm, 0)} ${volU('bcm')} · ${fmt('vol', tc.lcm, 0)} ${volU('lcm')}) → <b>${tc.workDays.toFixed(1)} working days</b> ${tc.seasonal ? '(month-by-month site weather, see the seasonal schedule)' : `at ${fmtU('mass', result.prod.dayT, 0)}/day`} · about ${Math.ceil(tc.calDays)} calendar days at ${state.ops.daysPerYear} working days/year, finishing around <b>${tc.finish}</b> if started ${tc.start}. Truck loads needed: <b>${tc.totalLoads.toLocaleString('en-US')}</b>${tc.loads.length > 1 ? ` (${tc.loads.map(x => `${x.n.toLocaleString('en-US')} × ${esc(x.name)} at ${fmt('mass', x.loadT, 1)} ${unit('mass')}`).join(' + ')})` : ` at ${fmt('mass', tc.loads[0].loadT, 1)} ${unit('mass')} per load`}.`;
 }
 // Hours per shift for an average truck: where the scheduled time goes (each loss applied once).
 function waterfall(r = result, c = lastCond) {
@@ -251,9 +259,10 @@ function run() {
   if (!state.profile.points) return;
   let input;
   try { input = toEngineInput(); result = computeScenario(input); } catch (e) { $('#warnings').innerHTML = `<b>Error:</b> ${esc(e.message)}`; console.error(e); return; }
+  seasonResult = seasonCalc(); seasonRangeRes = state.season.on ? [-1, 1].map(L => seasonCalc(L)) : null;
   renderSiteDerived();
   renderTags(); renderKPIs(); renderTables(); renderCharts(); renderProfileSummary();
-  seasonResult = seasonCalc(); seasonRangeRes = state.season.on ? [-1, 1].map(L => seasonCalc(L)) : null; renderSeason();
+  renderSeason();
   updateVisual(result);
 }
 
@@ -264,7 +273,7 @@ let seasonResult = null;
 function seasonCalc(level = state.season.level) {
   const se = state.season || {};
   if (!se.on || !result) return null;
-  const cache = new Map(), tc = targetCalc();
+  const cache = new Map(), tc = targetCalc(result, false);
   const dayTonnes = (t, mo) => {
     const site = { ...state.site, date: `${mo.y}-${String(mo.m + 1).padStart(2, '0')}-15`, tempC: +mo.tempC.toFixed(1), skyId: t.skyId, surfaceId: t.surfaceId };
     const inp = toEngineInput(site), c = inp.cond;

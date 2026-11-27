@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611272128';
-import { hToClock } from './conditions.js?v=202611272128';
-import { byId } from './engine.js?v=202611272128';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611272128';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611272133';
+import { hToClock } from './conditions.js?v=202611272133';
+import { byId } from './engine.js?v=202611272133';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611272133';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -458,7 +458,8 @@ function setupNote(i) {
 }
 function targetCard() {
   const tc = api.targetCalc(); if (!tc.ok) return '';
-  return `<div class="v-stat"><span class="lbl">Target ${fmt('vol', tc.V, 0)} ${api.volU(tc.basis)}</span><b>${tc.workDays.toFixed(1)} days</b><small>working days · ${tc.totalLoads.toLocaleString('en-US')} truck loads · finishes ≈ ${tc.finish}</small></div>`;
+  if (tc.notReached) return `<div class="v-stat"><span class="lbl">Target ${fmt('vol', tc.V, 0)} ${api.volU(tc.basis)}</span><b>Not reached</b><small>before the end date with the season weather · ${tc.totalLoads.toLocaleString('en-US')} truck loads</small></div>`;
+  return `<div class="v-stat"><span class="lbl">Target ${fmt('vol', tc.V, 0)} ${api.volU(tc.basis)}</span><b>${tc.workDays.toFixed(1)} days</b><small>working days${tc.seasonal ? ' with the season weather' : ''} · ${tc.totalLoads.toLocaleString('en-US')} truck loads · finishes ≈ ${tc.finish}</small></div>`;
 }
 function matNote() {
   const st = api.state(), md = api.matDerived(), dd = unit('dens') === 't/m³' ? 2 : 0;
