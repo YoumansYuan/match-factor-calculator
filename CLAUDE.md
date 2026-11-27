@@ -20,6 +20,7 @@ mixed fleets and haul-profile CSV upload. Metric/Imperial toggle (state always S
 - `js/units.js` — unit conversions; `js/docs.js` — Equipment Data + Method tabs (method text must match engine)
 - `js/data/equipment.js` — TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS, SOURCES
 - `data/sample-profile-evr.csv` — sample haul profile (see below)
+- `tools/bump-version.py` — stamps `?v=<timestamp>` on all CSS/JS references (index.html + every ES import). **Run before every push**, otherwise browsers keep old JS for up to 10 min (Pages cache) and the user sees no change.
 - `tests/engine.test.mjs` — validation; **run `node tests/engine.test.mjs` before every push (must print ALL PASSED)**
 
 ## Decisions already made (do not re-litigate without asking)

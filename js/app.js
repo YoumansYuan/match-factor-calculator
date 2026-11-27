@@ -1,8 +1,8 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES } from './data/equipment.js';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp } from './engine.js';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js';
-import { renderEquipment, renderMethod } from './docs.js';
-import { initVisual, updateVisual } from './visual.js';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES } from './data/equipment.js?v=202611270515';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp } from './engine.js?v=202611270515';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611270515';
+import { renderEquipment, renderMethod } from './docs.js?v=202611270515';
+import { initVisual, updateVisual } from './visual.js?v=202611270515';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {

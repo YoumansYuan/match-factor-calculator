@@ -1,8 +1,8 @@
 // Visual (friendly) mode: an animated mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js';
-import { byId } from './engine.js';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611270515';
+import { byId } from './engine.js?v=202611270515';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611270515';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result

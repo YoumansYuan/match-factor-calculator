@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, ROAD_SRC, SOURCES } from './data/equipment.js';
-import { unit, fmt, fmtU, toDisp } from './units.js';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, ROAD_SRC, SOURCES } from './data/equipment.js?v=202611270515';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611270515';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
