@@ -11,8 +11,6 @@ let popCtx = null;        // what the dialog is editing
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const TRUCK_COLORS = ['--t1', '--t2', '--t3', '--t4', '--t5'];
-const truckColor = i => `var(${TRUCK_COLORS[i % TRUCK_COLORS.length]})`;
 const isADT = m => /articulated/i.test(m.type);
 
 // ------------------------------------------------------------------ public
@@ -35,95 +33,165 @@ const activeTrucks = () => api.state().trucks.map((t, i) => (+t.count > 0 ? i : 
 const activeLoaders = () => api.state().loaders.map((l, i) => (+l.count > 0 ? i : -1)).filter(i => i >= 0);
 
 // ------------------------------------------------------------------ SVG drawings (original, generic shapes)
-function truckSVG(model, color, opts = {}) {
-  const adt = isADT(model);
-  const body = adt
-    ? `<path d="M-34,-12 L8,-12 L12,-30 L-36,-31 Z" class="tb-body" fill="${color}"/>`
-    : `<path d="M-33,-13 L16,-13 L20,-31 L28,-33 L28,-30 L-35,-31 Z" class="tb-body" fill="${color}"/>`;
-  const heap = adt ? `<path class="tb-load" d="M-33,-30 Q-12,-45 10,-30 Z"/>` : `<path class="tb-load" d="M-33,-30 Q-8,-46 18,-30 Z"/>`;
-  const wheels = adt
-    ? [-24, -9, 22].map(x => `<circle cx="${x}" cy="-6.5" r="6.5" class="tw"/><circle cx="${x}" cy="-6.5" r="2.4" class="th"/>`).join('')
-    : [-20, 18].map(x => `<circle cx="${x}" cy="-7.5" r="7.5" class="tw"/><circle cx="${x}" cy="-7.5" r="2.8" class="th"/>`).join('');
-  const chassis = adt
-    ? `<rect x="-32" y="-15" width="44" height="5" rx="1.5" class="tc"/><rect x="12" y="-17" width="20" height="7" rx="2" class="tc"/><rect x="15" y="-33" width="14" height="17" rx="2" fill="${color}"/><rect x="20" y="-31" width="7" height="7" rx="1" class="tg"/>`
-    : `<rect x="-30" y="-17" width="58" height="6" rx="1.5" class="tc"/><rect x="18" y="-28" width="10" height="11" rx="1.5" fill="${color}"/><rect x="21" y="-26.5" width="5.5" height="5.5" rx="1" class="tg"/>`;
-  const pivot = adt ? '-34,-12' : '-33,-13';
-  return `${chassis}<g class="tb" data-pivot="${pivot}">${heap}${body}</g>${wheels}${opts.label ? '' : ''}`;
+// ------------------------------------------------------------------ brand colours & machine drawings (original, generic side views)
+const brandOf = m => (/^CAT\b/i.test(m.name) ? 'cat' : /deere/i.test(m.name) ? 'jd' : /komatsu/i.test(m.name) ? 'kom' : 'other');
+const brandFill = m => `var(--b-${brandOf(m)})`;
+const truckColor = i => { const t = api && api.state().trucks[i]; const m = t && byId(TRUCKS, t.modelId); return m ? brandFill(m) : 'var(--accent)'; };
+const tyre = (x, y, r) => `<g class="tyre"><circle cx="${x}" cy="${y}" r="${r}" class="tw"/><circle cx="${x}" cy="${y}" r="${r - 1.2}" class="tread"/><circle cx="${x}" cy="${y}" r="${r * 0.5}" class="rim"/><circle cx="${x}" cy="${y}" r="${r * 0.18}" class="hub"/></g>`;
+
+function truckSVG(model) {
+  const b = brandOf(model), c = brandFill(model);
+  if (isADT(model)) {
+    return `<g class="brand-${b}">
+      <path d="M-30,-15 L8,-15 L14,-19 L22,-19 L22,-14 L-30,-12 Z" class="md"/>
+      <circle cx="10" cy="-17" r="2.6" class="md2"/>
+      <path d="M14,-31 L33,-31 L35,-26 L35,-16 L14,-16 Z" fill="${c}" class="pnl"/>
+      <path d="M33,-28 L35,-28 M33,-25 L35,-25 M33,-22 L35,-22" class="grille"/>
+      <path d="M14,-47 L26,-47 L28,-31 L13,-31 Z" fill="${c}" class="pnl"/>
+      <path d="M16,-45 L25,-45 L26.5,-33 L15,-33 Z" class="gl"/>
+      <path d="M15,-48 L27,-48" class="md-line"/>
+      <rect x="29" y="-36" width="1.6" height="5" class="md"/>
+      <g class="tb" data-pivot="-38,-15">
+        <path class="tb-load" d="M-40,-36 Q-16,-50 9,-36 Z"/>
+        <path d="M-41,-38 L9,-38 L11,-35 L8,-17 L-34,-15 L-38,-22 Z" fill="${c}" class="pnl"/>
+        <path d="M-41,-38 L9,-38" class="edge"/>
+        <path d="M-28,-37 L-27,-16 M-15,-37 L-14,-16 M-2,-37 L-1.5,-17" class="rib"/>
+        <path d="M-38,-22 L-42,-35" class="edge"/>
+      </g>
+      ${tyre(-27, -8, 8)}${tyre(-9, -8, 8)}${tyre(25, -8, 8)}
+      <path d="M-35,-17 Q-27,-27 -19,-17 M-17,-17 Q-9,-27 -1,-17 M17,-17 Q25,-27 33,-17" class="fender"/>
+    </g>`;
+  }
+  // rigid-frame hauler
+  return `<g class="brand-${b}">
+    <rect x="-36" y="-23" width="68" height="6" rx="1.5" class="md"/>
+    <path d="M18,-34 L35,-34 L36,-20 L18,-20 Z" class="md2"/>
+    <path d="M30,-33 L30,-22 M32.5,-33 L32.5,-22" class="grille"/>
+    <rect x="15" y="-36" width="22" height="2.2" class="md"/>
+    <path d="M17,-36 L17,-42 M37,-36 L37,-42 M17,-42 L37,-42" class="rail"/>
+    <path d="M17,-49 L27,-49 L28,-36 L16,-36 Z" fill="${c}" class="pnl"/>
+    <path d="M18.5,-47.5 L26,-47.5 L26.5,-39 L18,-39 Z" class="gl"/>
+    <path d="M33,-20 L37,-12 M34,-17 L37.5,-17 M35.2,-14.5 L37.8,-14.5" class="rail"/>
+    <rect x="29" y="-41" width="1.8" height="5" class="md"/>
+    <g class="tb" data-pivot="-38,-21">
+      <path class="tb-load" d="M-39,-41 Q-12,-57 14,-41 Z"/>
+      <path d="M-41,-41 L14,-41 L16,-44 L38,-52 L39,-49 L16,-38 L13,-22 L-36,-21 L-41,-30 Z" fill="${c}" class="pnl"/>
+      <path d="M-41,-41 L14,-41 L16,-44 L38,-52" class="edge"/>
+      <path d="M-26,-40 L-25,-22 M-11,-40 L-10.5,-22 M3,-40 L3,-22" class="rib"/>
+      <path d="M-41,-30 L-36,-21" class="edge"/>
+    </g>
+    ${tyre(-22, -10, 10)}${tyre(22, -10, 10)}
+    <path d="M-33,-21 Q-22,-34 -11,-21" class="fender"/>
+  </g>`;
 }
 
-function excavatorSVG(color) {
-  return `<rect x="-36" y="-13" width="72" height="13" rx="6.5" class="ex-track"/>
-    ${[-26, -13, 0, 13, 26].map(x => `<circle cx="${x}" cy="-6.5" r="3" class="th"/>`).join('')}
-    <rect x="-6" y="-19" width="12" height="7" class="tc"/>
+function excavatorSVG(model, pose = 'dump') {
+  const b = brandOf(model), c = brandFill(model);
+  const rollers = [-22, -12, -2, 8, 18].map(x => `<circle cx="${x}" cy="-4" r="2.6" class="roller"/>`).join('');
+  // arm angle: 'dump' = raised over a truck beside it, 'low' = reaching down from a bench
+  const armRot = pose === 'low' ? 34 : 0;
+  return `<g class="brand-${b}">
+    <path d="M-36,-1 Q-43,-1 -43,-8 Q-43,-15 -36,-15 L36,-15 Q43,-15 43,-8 Q43,-1 36,-1 Z" class="track"/>
+    <path d="M-36,-1 Q-43,-1 -43,-8 Q-43,-15 -36,-15 L36,-15 Q43,-15 43,-8 Q43,-1 36,-1 Z" class="shoes"/>
+    <circle cx="-35" cy="-8" r="5.5" class="sprocket"/><circle cx="35" cy="-8" r="5.5" class="idler"/>${rollers}
+    <rect x="-12" y="-20" width="24" height="5" class="md"/>
     <g class="ex-up">
-      <rect x="-36" y="-36" width="13" height="16" rx="3" class="tc"/>
-      <rect x="-26" y="-38" width="44" height="20" rx="3" fill="${color}"/>
-      <rect x="6" y="-52" width="14" height="15" rx="2" fill="${color}"/><rect x="10" y="-49" width="8" height="8" rx="1" class="tg"/>
-      <g class="ex-arm">
-        <path d="M14,-32 L42,-70" class="ex-boom" stroke="${color}"/>
-        <path d="M42,-70 L66,-40" class="ex-stick" stroke="${color}"/>
-        <path d="M60,-44 L74,-38 L72,-24 L58,-28 Z" class="ex-bucket"/>
-        <path class="ex-bload" d="M59,-41 Q66,-50 73,-38 Z"/>
+      <path d="M-44,-38 Q-46,-38 -46,-34 L-46,-24 Q-46,-20 -42,-20 L-30,-20 L-30,-38 Z" fill="${c}" class="pnl"/>
+      <path d="M-46,-29 L-30,-29" class="md-line"/>
+      <path d="M-31,-40 L6,-40 L8,-20 L-31,-20 Z" fill="${c}" class="pnl"/>
+      <path d="M-26,-36 L-26,-26 M-22,-36 L-22,-26 M-18,-36 L-18,-26 M-14,-36 L-14,-26" class="vent"/>
+      <rect x="-8" y="-45" width="2" height="5" class="md"/>
+      <path d="M-30,-44 L-30,-40 M-12,-44 L-12,-40 M-30,-44 L-12,-44" class="rail"/>
+      <path d="M7,-56 L22,-56 Q24,-56 24,-53 L24,-20 L7,-20 Z" fill="${c}" class="pnl"/>
+      <path d="M9,-54 L21,-54 L22,-34 L9,-34 Z" class="gl"/>
+      <path d="M15.5,-54 L15.5,-34" class="md-line"/>
+      <g class="ex-arm" transform="rotate(${armRot} 18 -30)">
+        <path d="M14,-34 Q22,-70 44,-80 L50,-74 Q30,-64 24,-28 Z" fill="${c}" class="pnl"/>
+        <path d="M12,-24 L30,-58" class="cyl"/><path d="M22,-42 L30,-58" class="rod"/>
+        <path d="M44,-80 L52,-76 L72,-44 L66,-41 Z" fill="${c}" class="pnl"/>
+        <path d="M44,-84 L60,-66" class="cyl"/><path d="M54,-73 L60,-66" class="rod"/>
+        <path d="M64,-48 Q80,-46 82,-32 L76,-24 L62,-30 Q60,-40 64,-48 Z" class="bucket"/>
+        <path d="M76,-24 L79,-20 L78,-25 M70,-26 L72,-22 L72,-27" class="teeth"/>
+        <path class="ex-bload" d="M63,-44 Q72,-56 81,-36 Z"/>
       </g>
-    </g>`;
+    </g>
+  </g>`;
 }
 
 // ------------------------------------------------------------------ static scene: excavator + a line of trucks
 function sceneWidth() { const el = $('#scene-wrap'); const w = el ? el.clientWidth : 1000; return clamp(Math.round(w), 640, 1100); }
 const shortName = m => m.name.replace(/^(CAT|John Deere)\s+/i, '');
-const ROW = [{ dy: 0, s: 1 }, { dy: -30, s: 0.84 }, { dy: -54, s: 0.7 }];
-const EX_X = 95, SPOT_X = 182;
+const truckScale = m => clamp(Math.sqrt(m.ratedPayloadKg / 90000), 0.74, 1.05);
 
 function buildScene() {
   const svg = $('#scene'); if (!svg) return;
   const st = api.state();
-  const W = sceneWidth(), H = 250, y0 = 190;
+  const W = sceneWidth(), H = 270, y0 = 212;
+  const yB = y0 - 58, crest = 160, toe = 168;            // bench for a second excavator
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const mat = byId(MATERIALS, st.materialId);
-  // material face
-  const face = `M0,${y0 - 120} L18,${y0 - 118} L30,${y0 - 96} L26,${y0 - 80} L44,${y0 - 58} L40,${y0 - 40} L58,${y0 - 18} L64,${y0} L0,${y0} Z`;
-  // excavators: one icon per unit, max 3 depth rows; drawn mid-pass (dumping over the first truck)
   const units = [];
   st.loaders.forEach((l, i) => { for (let u = 0; u < (+l.count || 0); u++) units.push(i); });
-  let ex = '';
-  units.slice(0, 3).map((i, k) => ({ i, k })).reverse().forEach(({ i, k }) => {
-    const r = ROW[k], m = byId(LOADERS, st.loaders[i].modelId);
-    ex += `<g class="hot ex" data-pop="loader:${i}" tabindex="0" role="button" aria-label="Change excavator: ${esc(m.name)}" transform="translate(${EX_X + k * 6},${y0 + r.dy}) scale(${r.s})">
-      <g class="ex-root">${excavatorSVG('var(--exc)')}</g>
-      ${k === 0 ? `<text class="lbl-sm" x="0" y="17" text-anchor="middle">${esc(m.name)}${units.length > 1 ? ` · ${units.length} units` : ''}</text>` : ''}</g>`;
-  });
-  if (!units.length) ex = `<g class="hot slot" data-pop="add-loader" tabindex="0" role="button" aria-label="Add an excavator" transform="translate(${EX_X},${y0})"><rect x="-40" y="-70" width="80" height="70" rx="10"/><text x="0" y="-30" text-anchor="middle">+ Excavator</text></g>`;
-  // the truck line: first truck under the bucket, the rest queued behind it
+  const two = units.length >= 2;
+  // dig face: a bench top (upper excavator stands here) dropping to the pit floor (lower excavator)
+  const face = `M0,${yB - 62} L20,${yB - 60} L34,${yB - 40} L30,${yB - 22} L44,${yB} L${crest},${yB} L${toe - 3},${yB + 30} L${toe},${y0} L0,${y0} Z`;
   const line = [];
   st.trucks.forEach((t, i) => { for (let k = 0; k < (+t.count || 0); k++) line.push(i); });
-  const qStart = SPOT_X + 92, slotW = 70;
+  const tm = k => byId(TRUCKS, st.trucks[line[k]].modelId);
+  // upper excavator (on the bench) loads the second truck from above; lower one loads the first truck beside it
+  const xB = 112, bucketB = xB + 66;
+  let truckBx = null, xA;
+  if (two) {
+    if (line.length >= 2) truckBx = bucketB + 14 * truckScale(tm(0));
+    const frontB = truckBx != null ? truckBx + 39 * truckScale(tm(0)) : toe + 40;
+    xA = Math.max(toe + 50, frontB + 50);
+  } else xA = toe + 52;
+  const aIdx = truckBx != null ? 1 : 0;
+  const truckAx = xA + 72 + (line.length ? 14 * truckScale(tm(aIdx)) : 14);
+  const exG = (i, x, y, pose, lblY) => {
+    const m = byId(LOADERS, st.loaders[i].modelId);
+    return `<g class="hot ex" data-pop="loader:${i}" tabindex="0" role="button" aria-label="Change excavator: ${esc(m.name)}" transform="translate(${x},${y})">
+      ${excavatorSVG(m, pose)}<text class="lbl-sm" x="0" y="${lblY}" text-anchor="middle">${esc(m.name)}</text></g>`;
+  };
+  let ex = '';
+  if (two) ex += exG(units[1], xB, yB, 'low', -66);
+  if (units.length) ex += exG(units[0], xA, y0, 'dump', 17);
+  else ex = `<g class="hot slot" data-pop="add-loader" tabindex="0" role="button" aria-label="Add an excavator" transform="translate(${xA},${y0})"><rect x="-42" y="-70" width="84" height="70" rx="10"/><text x="0" y="-30" text-anchor="middle">+ Excavator</text></g>`;
+  if (units.length > 2) ex += `<text class="lbl-sm" x="${xA}" y="${y0 + 32}" text-anchor="middle">+ ${units.length - 2} more excavator${units.length > 3 ? 's' : ''} (not drawn)</text>`;
+  // truck positions: loading spots first, then the queue
+  // reading left to right: the bench excavator's truck (if any) comes first, then the floor excavator's
+  const spots = truckBx != null ? [truckBx, truckAx] : [truckAx];
+  const qStart = truckAx + 92, slotW = 70;
   const room = W - 24 - slotW - qStart;
-  const sp = line.length > 1 ? Math.min(84, room / (line.length - 1)) : 84;
-  const showLbl = sp >= 46;
-  let trucks = '';
+  const nQ = Math.max(0, line.length - spots.length);
+  const sp = nQ > 1 ? Math.min(86, room / (nQ - 1 + 0.8)) : 86;
+  const showLbl = sp >= 48;
+  let trucks = '', lastX = truckAx;
   line.forEach((i, k) => {
-    const m = byId(TRUCKS, st.trucks[i].modelId), sc = clamp(Math.sqrt(m.ratedPayloadKg / 90000), 0.72, 1.1);
-    const x = k === 0 ? SPOT_X : qStart + (k - 1) * sp;
-    const dir = k === 0 ? 1 : -1;
-    trucks += `<g class="hot truck" data-pop="one:${i}" tabindex="0" role="button" aria-label="Truck ${k + 1}: ${esc(m.name)}" transform="translate(${x.toFixed(1)},${y0})">
-      <g transform="scale(${dir * sc},${sc})">${truckSVG(m, truckColor(i))}</g>
-      ${showLbl || k === 0 ? `<text class="lbl-xs" x="0" y="15" text-anchor="middle">${esc(shortName(m))}</text>` : ''}
-      <g class="rm-one" data-dec="${i}" role="button" tabindex="0" aria-label="Remove this ${esc(m.name)}" transform="translate(${(14 * sc).toFixed(1)},${(-46 * sc).toFixed(1)})"><circle r="8.5"/><path d="M-3,-3 L3,3 M3,-3 L-3,3"/></g>
+    const m = byId(TRUCKS, st.trucks[i].modelId), sc = truckScale(m);
+    const loading = k < spots.length;
+    const x = loading ? spots[k] : qStart + (k - spots.length) * sp;
+    if (!loading) lastX = x;
+    const dir = loading ? 1 : -1;
+    trucks += `<g class="hot truck ${loading ? 'loading' : ''}" data-pop="one:${i}" tabindex="0" role="button" aria-label="Truck ${k + 1}: ${esc(m.name)}${loading ? ' (being loaded)' : ''}" transform="translate(${x.toFixed(1)},${y0})">
+      <g transform="scale(${dir * sc},${sc})">${truckSVG(m)}</g>
+      ${showLbl || loading ? `<text class="lbl-xs" x="0" y="15" text-anchor="middle">${esc(shortName(m))}</text>` : ''}
+      <g class="rm-one" data-dec="${i}" role="button" tabindex="0" aria-label="Remove this ${esc(m.name)}" transform="translate(${(dir * -6 * sc).toFixed(1)},${(-60 * sc).toFixed(1)})"><circle r="8.5"/><path d="M-3,-3 L3,3 M3,-3 L-3,3"/></g>
     </g>`;
-    if (k === 0) trucks += `<path class="tb-load" d="M${SPOT_X - 33 * sc},${y0 - 30 * sc} Q${SPOT_X - 8 * sc},${y0 - 40 * sc} ${SPOT_X + 16 * sc},${y0 - 30 * sc} Z" style="pointer-events:none"/>`;
   });
-  const slotX = line.length === 0 ? SPOT_X : line.length === 1 ? qStart : qStart + (line.length - 2) * sp + Math.max(60, sp);
-  const slot = `<g class="hot slot" data-pop="add-truck" tabindex="0" role="button" aria-label="Add a truck to the line" transform="translate(${Math.min(slotX, W - slotW / 2 - 10).toFixed(1)},${y0})"><rect x="-32" y="-42" width="64" height="42" rx="8"/><text x="0" y="-17" text-anchor="middle">+ Truck</text></g>`;
+  const slotX = nQ === 0 ? qStart : lastX + Math.max(64, sp);
+  const slot = `<g class="hot slot" data-pop="add-truck" tabindex="0" role="button" aria-label="Add a truck to the line" transform="translate(${Math.min(slotX, W - slotW / 2 - 10).toFixed(1)},${y0})"><rect x="-32" y="-46" width="64" height="46" rx="8"/><text x="0" y="-19" text-anchor="middle">+ Truck</text></g>`;
   const N = line.length;
+  // draw the bench excavator's truck after the face so it sits in front of the toe
   svg.innerHTML = `
     <defs><linearGradient id="sky" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--sky-1)"/><stop offset="1" stop-color="var(--sky-2)"/></linearGradient></defs>
     <rect width="${W}" height="${H}" fill="url(#sky)"/>
     <rect x="0" y="${y0}" width="${W}" height="${H - y0}" class="ground"/>
     <path d="${face}" class="hot face" data-pop="material" tabindex="0" role="button" aria-label="Change material"/>
-    <text class="lbl-sm" x="12" y="${y0 - 128}">${esc(mat ? mat.name : 'Material')}</text>
-    <text class="lbl" x="${qStart - 20}" y="34">Truck line · ${N} truck${N === 1 ? '' : 's'}</text>
-    <text class="lbl-sm" x="${qStart - 20}" y="52">${esc(lineSummary(st))}</text>
-    <text class="lbl-sm" x="${qStart - 20}" y="70">Tap a truck to change it, × to take it out, + to add one.</text>
+    <text class="lbl-face" x="12" y="${y0 - 12}">${esc(mat ? mat.name : 'Material')}</text>
+    <text class="lbl" x="${qStart - 30}" y="30">Truck line · ${N} truck${N === 1 ? '' : 's'}</text>
+    <text class="lbl-sm" x="${qStart - 30}" y="48">${esc(lineSummary(st))}</text>
+    <text class="lbl-sm" x="${qStart - 30}" y="66">Tap a truck to change it, × to take it out, + to add one.</text>
     ${ex}${trucks}${slot}`;
   buildRoadStrip();
 }
@@ -158,7 +226,7 @@ function renderFleetBar() {
   const st = api.state();
   const lo = st.loaders.map((l, i) => {
     const m = byId(LOADERS, l.modelId); const b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
-    return `<button class="chip" data-pop="loader:${i}"><span class="sw" style="background:var(--exc)"></span><b>${esc(m.name)}</b> × ${+l.count || 0}<small>${fmt('vol', b.m3, 1)} ${unit('vol')} bucket</small></button>`;
+    return `<button class="chip" data-pop="loader:${i}"><span class="sw" style="background:${brandFill(m)}"></span><b>${esc(m.name)}</b> × ${+l.count || 0}<small>${fmt('vol', b.m3, 1)} ${unit('vol')} bucket</small></button>`;
   }).join('');
   const tr = st.trucks.map((t, i) => {
     const m = byId(TRUCKS, t.modelId);
@@ -171,20 +239,21 @@ function renderFleetBar() {
 }
 
 // ------------------------------------------------------------------ plain-language results
-function verdict(mf, prod) {
+function verdict(mf, prod, nL = 1) {
+  const ex = nL > 1 ? 'excavators stand' : 'excavator stands', exW = nL > 1 ? 'excavators wait' : 'excavator waits', exN = nL > 1 ? 'excavators never stop' : 'excavator never stops', exF = nL > 1 ? 'the excavators can' : 'the excavator can';
   const lIdle = Math.round((1 - prod.loaderEff) * 100), tWait = Math.round((1 - prod.truckEff) * 100);
-  if (mf < 0.85) return { cls: 'u', title: 'Not enough trucks', text: `The excavator stands idle about ${lIdle} % of the time waiting for the next truck. Adding trucks will raise production.` };
-  if (mf < 0.98) return { cls: 'ok', title: 'Good match (slightly short of trucks)', text: `The excavator waits a little (≈ ${lIdle} % of the time). This is usually the cheapest way to run a fleet.` };
-  if (mf <= 1.05) return { cls: 'ok', title: 'Well balanced', text: 'Trucks arrive about as fast as the excavator can fill them. In real life a little waiting happens on both sides.' };
-  if (mf <= 1.2) return { cls: 'o', title: 'Slightly too many trucks', text: `The excavator never stops, but trucks wait in line about ${tWait} % of the time.` };
-  return { cls: 'o', title: 'Too many trucks', text: `Trucks spend about ${tWait} % of their time queuing at the excavator. Removing trucks would save cost with little loss of production.` };
+  if (mf < 0.85) return { cls: 'u', title: 'Not enough trucks', text: `The ${ex} idle about ${lIdle} % of the time waiting for the next truck. Adding trucks will raise production.` };
+  if (mf < 0.98) return { cls: 'ok', title: 'Good match (slightly short of trucks)', text: `The ${exW} a little (≈ ${lIdle} % of the time). This is usually the cheapest way to run a fleet.` };
+  if (mf <= 1.05) return { cls: 'ok', title: 'Well balanced', text: `Trucks arrive about as fast as ${exF} fill them. In real life a little waiting happens on both sides.` };
+  if (mf <= 1.2) return { cls: 'o', title: 'Slightly too many trucks', text: `The ${exN}, but trucks wait in line about ${tWait} % of the time.` };
+  return { cls: 'o', title: 'Too many trucks', text: `Trucks spend about ${tWait} % of their time queuing. Removing trucks would save cost with little loss of production.` };
 }
 
 function renderSummary() {
   const box = $('#v-summary');
   if (!R || !R.trucks.length || !R.loaders.length) { box.innerHTML = `<div class="v-card"><b>Add at least one excavator and one truck to see results.</b></div>`; return; }
   const st = api.state();
-  const v = verdict(R.mf, R.prod);
+  const v = verdict(R.mf, R.prod, R.loaders.reduce((a, l) => a + l.count, 0));
   const N = R.trucks.reduce((s, t) => s + t.n, 0);
   const need = Math.max(1, Math.round(R.trucksForMF1));
   const needA = Math.ceil(R.trucksForMF1WithAvail || 0);
@@ -196,7 +265,7 @@ function renderSummary() {
   const types = R.trucks.map((t, i) => {
     const p = t.pairs[0];
     const idx = activeTrucks()[i];
-    const parts = [['Waiting & positioning', t.spotS, 'var(--muted)'], ['Being loaded', t.loadTimeS, 'var(--good)'], ['Driving loaded', t.haul.t, truckColor(idx)], ['Dumping', t.dumpS, 'var(--ink-2)'], ['Driving back empty', t.ret.t, 'var(--blue)']];
+    const parts = [['Waiting & positioning', t.spotS, 'var(--muted)'], ['Being loaded', t.loadTimeS, 'var(--t5)'], ['Driving loaded', t.haul.t, 'var(--t4)'], ['Dumping', t.dumpS, 'var(--ink-2)'], ['Driving back empty', t.ret.t, 'var(--blue)']];
     const tot = parts.reduce((s, x) => s + x[1], 0);
     return `<div class="v-trip">
       <div class="v-trip-h"><span class="sw" style="background:${truckColor(idx)}"></span><b>${esc(t.truck.name)}</b> × ${t.n}<span class="muted"> — one round trip takes <b>${(t.ct / 60).toFixed(1)} min</b></span></div>
@@ -230,8 +299,8 @@ const pct = v => Math.round(v * 100);
 function modelCard(m, selected, kind, color) {
   const isT = /truck/.test(kind);
   const icon = isT
-    ? `<svg viewBox="-40 -40 80 44" class="mc-ico"><g>${truckSVG(m, color)}</g></svg>`
-    : `<svg viewBox="-44 -76 124 80" class="mc-ico"><g>${excavatorSVG('var(--exc)')}</g></svg>`;
+    ? `<svg viewBox="-46 -56 88 60" class="mc-ico"><g>${truckSVG(m)}</g></svg>`
+    : `<svg viewBox="-50 -88 136 92" class="mc-ico"><g>${excavatorSVG(m)}</g></svg>`;
   const facts = isT
     ? `${fmtU('kg', m.ratedPayloadKg, 0)} payload · ${fmtU('vol', m.heapedM3, 1)} body`
     : `${fmtU('power', m.netPowerKw, 0)} · buckets ${fmt('vol', Math.min(...m.buckets.map(b => b.m3)), 1)}–${fmt('vol', Math.max(...m.buckets.map(b => b.m3)), 1)} ${unit('vol')}`;
