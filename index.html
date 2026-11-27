@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611272110">
+  <link rel="stylesheet" href="css/styles.css?v=202611272128">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -129,11 +129,12 @@
           <label class="check span3"><input type="checkbox" data-bind="season.on"> Work out the schedule month by month with the site weather (from the work date above)</label>
           <label>Start (work date)<input type="date" data-bind="site.date"></label>
           <label>End date <span class="u">(optional)</span><input type="date" data-bind="season.end"></label>
+          <label>Hours lost per dense-fog day <span class="u">h</span><input type="number" step="1" min="0" data-bind="season.fogStopH" title="Hours of the working day when trucks are stood down because visibility is too low"></label>
           <label class="span3 season-slider">Weather level <span class="u season-level-lbl"></span>
             <span class="slider-row"><small>Optimistic</small><input type="range" min="-1" max="1" step="0.05" data-bind="season.level"><small>Cautious</small></span></label>
           <p class="note span3">Each month's days are split into heavy snowfall, light snowfall, rain, dry with a snow-packed road, and dry days, from the site climate. Every day type is run through the same fleet, road and shift model, then weighted by its number of days. The slider moves every month from the station median towards a 1-in-10 good year (left) or a 1-in-10 bad year (right). Working days per month = calendar days × working days per year ÷ 365.</p>
           <details class="span3 climate-edit"><summary>Monthly climate — Fording River (edit)</summary>
-            <p class="note">Station: Environment Canada <b>Fording River Cominco</b> (climate ID 1152899, 1,585 m), daily records 1970–2007. Blank = station median (hover a box to see its P10 / P90). An edited value moves the whole P10–P90 range with it. Temperatures are corrected from the station to the haul-road elevation (−0.6 °C per 100 m).</p>
+            <p class="note">Station: Environment Canada <b>Fording River Cominco</b> (climate ID 1152899, 1,585 m), daily records 1970–2007. Blank = station median (hover a box to see its P10 / P90). An edited value moves the whole P10–P90 range with it. Temperatures are corrected from the station to the haul-road elevation (−0.6 °C per 100 m). <b>Heavy-snow days</b> = snow days that are part of a storm totalling ≥ 5 cm (consecutive snow days added up). <b>Dense-fog days</b>: no Elk Valley station records visibility; the default is Cranbrook airport (940 m, days with ≥ 3 h below 1 km visibility), which likely under-states mountain fog — please replace it with your site's experience.</p>
             <div class="tblwrap"><table class="tbl climate-tbl"><thead><tr id="climate-head"></tr></thead><tbody id="climate-rows"></tbody></table></div>
             <button class="link" id="climate-reset">Reset to station values</button>
           </details>
@@ -311,6 +312,6 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611272110"></script>
+<script type="module" src="js/app.js?v=202611272128"></script>
 </body>
 </html>

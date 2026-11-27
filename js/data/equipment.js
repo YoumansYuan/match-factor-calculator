@@ -312,9 +312,14 @@ export const SURFACES = [
 
 // Grader maintenance: share of the surface penalty that remains, and extra RR from ruts/spillage building up. Planning estimates.
 export const GRADING = [
-  { id: 'none', name: 'No grader', keep: 1.0, rrExtra: 1.0, note: 'Ruts, spillage and windrows build up through the shift (+1 % RR).' },
-  { id: 'shift', name: 'Graded once per shift', keep: 0.7, rrExtra: 0.3, note: 'Removes about 30 % of the snow/mud penalty on average over the shift.' },
-  { id: 'dedicated', name: 'Dedicated grader on the haul road', keep: 0.4, rrExtra: 0, note: 'Continuous clean-up of snow, mud and spillage (Tannant 2001 stresses routine grading).' },
+  // keep = share of the wet/mud surface penalty that remains; snowClear = share of the snow penalty removed (RR, traction and the
+  // snow speed cap; ice gets half of it from sanding). Planning estimates.
+  { id: 'none', name: 'No grader', keep: 1.0, rrExtra: 1.0, snowClear: 0, note: 'Ruts, spillage and windrows build up through the shift (+1 % RR). Snow stays on the road.' },
+  { id: 'shift', name: 'Graded once per shift', keep: 0.7, rrExtra: 0.3, snowClear: 0.3, note: 'Removes about 30 % of the snow/mud penalty on average over the shift.' },
+  { id: 'twice', name: 'Graded twice per shift', keep: 0.55, rrExtra: 0.15, snowClear: 0.45, note: 'About 45 % of the snow/mud penalty removed on average.' },
+  { id: 'dedicated', name: 'Dedicated grader on the haul road', keep: 0.4, rrExtra: 0, snowClear: 0.6, note: 'Continuous clean-up of snow, mud and spillage (Tannant 2001 stresses routine grading).' },
+  { id: 'plow', name: 'Dedicated grader + snow plow & sander through snowfall', keep: 0.4, rrExtra: 0, snowClear: 0.85, note: 'Snow cleared while it falls and the road sanded: most of the snow penalty and speed cap removed; ice partly treated by sanding.' },
+  { id: 'plow2', name: 'Full winter program (2 graders, plow truck, sander)', keep: 0.3, rrExtra: 0, snowClear: 0.95, note: 'Road kept close to bare through snowfall; only a small residual snow penalty.' },
 ];
 
 // Weather = sky & visibility. Speed cap applies to the whole haul; efficiency multiplies production once.
@@ -334,24 +339,28 @@ export const MONTHLY_TEMP_C = [-9.9, -8.2, -3.5, 1.1, 5.5, 9.7, 12.6, 12.1, 7.5,
 // Monthly climate at the Fording River operation (Environment Canada station FORDING RIVER COMINCO, climate ID 1152899,
 // 50°08'55" N 114°51'18" W, 1,585 m). Each value is [P10, P50, P90] over the years of daily records 1970–2007
 // (33–38 complete years per month): tmean = mean daily temperature °C; pr02 / pr5 = days with precipitation ≥ 0.2 / 5 mm;
-// sn02 / sn5 = days with snowfall ≥ 0.2 / 5 cm; txle0 = days with max temperature ≤ 0 °C; sog1 = days with ≥ 1 cm snow on the ground.
+// sn02 = days with snowfall ≥ 0.2 cm; sn5 = snow days that belong to a snowstorm of ≥ 5 cm in total (consecutive snow days added
+// up, so a 3-day storm of 3 cm/day counts as 3 heavy days — user 2026-11-27: single-day ≥ 5 cm under-counts storms on site);
+// txle0 = days with max temperature ≤ 0 °C; sog1 = days with ≥ 1 cm snow on the ground;
+// fog = days with ≥ 3 h of visibility < 1 km at CRANBROOK A (climate ID 1152102, 940 m, hourly data 1985–2012) — the nearest
+// station that records visibility; a valley airport, so it likely UNDER-states mountain fog / low cloud at the mine: edit with site data.
 // Computed from the EC daily data by Claude (2026-11-27); normals (1981–2010) are in CLIMATE.normals for reference.
 export const CLIMATE = {
   id: 'fording', name: 'Fording River (EC Fording River Cominco, 1,585 m)', elevM: 1585, lat: 50.149, lon: -114.855,
   src: 'Environment and Climate Change Canada — station FORDING RIVER COMINCO (climate ID 1152899): daily data 1970–2007 (P10/P50/P90 per month) and Canadian Climate Normals 1981–2010.',
   months: [
-    { tmean: [-14.7, -10.6, -6.7], pr02: [8, 11.5, 18], pr5: [1, 3, 7], sn02: [8, 11, 18], sn5: [1, 3, 7], txle0: [19.4, 25.5, 30], sog1: [21.7, 31, 31] },
-    { tmean: [-12.2, -7.5, -4.6], pr02: [5.2, 9, 13], pr5: [1, 3, 5], sn02: [5, 9, 13], sn5: [1, 3, 5], txle0: [13, 19, 24], sog1: [22.4, 28, 28.8] },
-    { tmean: [-6.8, -3.9, -1.4], pr02: [6.4, 11, 16.2], pr5: [1, 4, 6], sn02: [6, 9, 15], sn5: [0.4, 3, 5], txle0: [4.4, 13, 22.6], sog1: [8.3, 24.2, 31] },
-    { tmean: [-1.2, 1.2, 2.7], pr02: [6, 10, 12.8], pr5: [1, 3, 5], sn02: [4, 6, 9], sn5: [0, 2, 4], txle0: [0, 4, 7.8], sog1: [2.8, 6.3, 11.5] },
-    { tmean: [3.6, 6, 7.2], pr02: [4.7, 12, 15.3], pr5: [1.7, 4, 7.3], sn02: [0.7, 3, 6.3], sn5: [0, 1, 2], txle0: [0, 0, 1.3], sog1: [0.8, 2, 6.2] },
-    { tmean: [8.4, 9.8, 11.8], pr02: [9, 14, 19.2], pr5: [2.4, 5, 8], sn02: [0, 0, 2.2], sn5: [0, 0, 1], txle0: [0, 0, 0], sog1: [0, 0, 0] },
-    { tmean: [10.7, 13.2, 15.6], pr02: [5.4, 10, 17.2], pr5: [1, 3, 7.6], sn02: [0, 0, 0], sn5: [0, 0, 0], txle0: [0, 0, 0], sog1: [0, 0, 0] },
-    { tmean: [10.2, 12.1, 14.5], pr02: [3, 9, 16.6], pr5: [1, 3, 6], sn02: [0, 0, 0], sn5: [0, 0, 0], txle0: [0, 0, 0], sog1: [0, 0, 0] },
-    { tmean: [4.9, 7.6, 9.7], pr02: [5, 9, 15], pr5: [1, 3, 6], sn02: [0, 1, 4], sn5: [0, 0, 2], txle0: [0, 0, 1.6], sog1: [0, 0, 2.1] },
-    { tmean: [0, 2.1, 3.5], pr02: [5.4, 9, 13.2], pr5: [1, 2, 5.6], sn02: [2, 4, 8], sn5: [0, 1, 3], txle0: [0, 2, 7.6], sog1: [1, 4.1, 10.2] },
-    { tmean: [-9, -5.5, -3], pr02: [5.3, 11, 16], pr5: [1, 3, 7.6], sn02: [4.4, 10, 16], sn5: [0.4, 3, 5], txle0: [10, 20, 25.6], sog1: [11.8, 24.8, 30] },
-    { tmean: [-15.6, -10.7, -7.5], pr02: [8, 11, 16.6], pr5: [1, 3, 10.6], sn02: [7, 11, 15.6], sn5: [1, 3, 9.2], txle0: [22.8, 28, 31], sog1: [27, 31, 31] },
+    { tmean: [-14.7, -10.6, -6.7], pr02: [8, 11.5, 18], pr5: [1, 3, 7], sn02: [8, 11, 18], sn5: [3, 8, 12.3], txle0: [19.4, 25.5, 30], sog1: [21.7, 31, 31], fog: [0, 0, 2] },
+    { tmean: [-12.2, -7.5, -4.6], pr02: [5.2, 9, 13], pr5: [1, 3, 5], sn02: [5, 9, 13], sn5: [2.4, 6, 13], txle0: [13, 19, 24], sog1: [22.4, 28, 28.8], fog: [0, 0, 1] },
+    { tmean: [-6.8, -3.9, -1.4], pr02: [6.4, 11, 16.2], pr5: [1, 4, 6], sn02: [6, 9, 15], sn5: [2, 5, 11], txle0: [4.4, 13, 22.6], sog1: [8.3, 24.2, 31], fog: [0, 0, 0] },
+    { tmean: [-1.2, 1.2, 2.7], pr02: [6, 10, 12.8], pr5: [1, 3, 5], sn02: [4, 6, 9], sn5: [0.2, 5, 6.8], txle0: [0, 4, 7.8], sog1: [2.8, 6.3, 11.5], fog: [0, 0, 0] },
+    { tmean: [3.6, 6, 7.2], pr02: [4.7, 12, 15.3], pr5: [1.7, 4, 7.3], sn02: [0.7, 3, 6.3], sn5: [0, 1, 3.3], txle0: [0, 0, 1.3], sog1: [0.8, 2, 6.2], fog: [0, 0, 0] },
+    { tmean: [8.4, 9.8, 11.8], pr02: [9, 14, 19.2], pr5: [2.4, 5, 8], sn02: [0, 0, 2.2], sn5: [0, 0, 1], txle0: [0, 0, 0], sog1: [0, 0, 0], fog: [0, 0, 0.3] },
+    { tmean: [10.7, 13.2, 15.6], pr02: [5.4, 10, 17.2], pr5: [1, 3, 7.6], sn02: [0, 0, 0], sn5: [0, 0, 0], txle0: [0, 0, 0], sog1: [0, 0, 0], fog: [0, 0, 0] },
+    { tmean: [10.2, 12.1, 14.5], pr02: [3, 9, 16.6], pr5: [1, 3, 6], sn02: [0, 0, 0], sn5: [0, 0, 0], txle0: [0, 0, 0], sog1: [0, 0, 0], fog: [0, 0, 0] },
+    { tmean: [4.9, 7.6, 9.7], pr02: [5, 9, 15], pr5: [1, 3, 6], sn02: [0, 1, 4], sn5: [0, 0, 2.4], txle0: [0, 0, 1.6], sog1: [0, 0, 2.1], fog: [0, 0, 0] },
+    { tmean: [0, 2.1, 3.5], pr02: [5.4, 9, 13.2], pr5: [1, 2, 5.6], sn02: [2, 4, 8], sn5: [0, 2, 5.5], txle0: [0, 2, 7.6], sog1: [1, 4.1, 10.2], fog: [0, 0, 0] },
+    { tmean: [-9, -5.5, -3], pr02: [5.3, 11, 16], pr5: [1, 3, 7.6], sn02: [4.4, 10, 16], sn5: [1.4, 6, 14], txle0: [10, 20, 25.6], sog1: [11.8, 24.8, 30], fog: [0, 0, 2.4] },
+    { tmean: [-15.6, -10.7, -7.5], pr02: [8, 11, 16.6], pr5: [1, 3, 10.6], sn02: [7, 11, 15.6], sn5: [2.2, 9, 14.6], txle0: [22.8, 28, 31], sog1: [27, 31, 31], fog: [0, 0, 2] },
   ],
   // 1981–2010 normals: daily mean °C, rain mm, snow cm, precip mm
   normals: { tmean: [-9.9, -8.2, -3.5, 1.1, 5.5, 9.7, 12.6, 12.1, 7.5, 1.8, -6.2, -11.3], rainMm: [3.7, 3.1, 7.1, 14.4, 40.0, 82.1, 58.0, 46.5, 40.6, 22.6, 17.1, 4.6],

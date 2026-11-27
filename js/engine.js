@@ -2,7 +2,7 @@
 // Methods follow MIME 333 Ch.3 (Mitri & Sasmito), the Caterpillar Performance Handbook Ed.47,
 // the Komatsu Specifications & Application Handbook Ed.32 and Burt & Caccetta (2007, corrigendum 2008).
 
-import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611272110';
+import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611272128';
 
 export const G = 9.81;
 const BETA = 0.268;  // kg fuel / kW·h (MIME 333 formula sheet)
@@ -28,14 +28,17 @@ export function interp(table, x) {
 export function resolveRoad(site) {
   const road = byId(ROADS, site.roadId) || ROADS[1];
   const w = byId(SURFACES, site.surfaceId ?? site.weatherId) || SURFACES[0];
-  const g = byId(GRADING, site.gradingId) || { id: 'n/a', name: 'not set', keep: 1, rrExtra: 0 };
+  const g = byId(GRADING, site.gradingId) || { id: 'n/a', name: 'not set', keep: 1, rrExtra: 0, snowClear: 0 };
   const rrSet = site.rrOverride != null && site.rrOverride !== '', muSet = site.tractionOverride != null && site.tractionOverride !== '';
   let rr = rrSet ? +site.rrOverride : road.rr;
   let mu = muSet ? +site.tractionOverride : road.traction;
   const rrPenalty = Math.max(road.rr + w.rrAdd, w.rrMin) - road.rr;
   const muSurface = Math.min(road.traction * w.tractionMult, w.tractionMax);
-  if (!rrSet) rr = road.rr + rrPenalty * g.keep + g.rrExtra;
-  if (!muSet) mu = road.traction - (road.traction - muSurface) * g.keep;
+  // snow roads: the grader / plow program removes snowClear of the penalty; ice: sanding removes half of that
+  const sc = g.snowClear ?? (1 - g.keep);
+  const keep = ['packedsnow', 'loosesnow'].includes(w.id) ? 1 - sc : w.id === 'ice' ? 1 - sc / 2 : g.keep;
+  if (!rrSet) rr = road.rr + rrPenalty * keep + g.rrExtra;
+  if (!muSet) mu = road.traction - (road.traction - muSurface) * keep;
   return { rr, mu, road, weather: w, surface: w, grading: g, rrPenalty, muSurface };
 }
 

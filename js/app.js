@@ -1,12 +1,12 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272110';
-import { siteConditions, hToClock } from './conditions.js?v=202611272110';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272110';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272110';
-import { renderEquipment, renderMethod } from './docs.js?v=202611272110';
-import { initVisual, updateVisual } from './visual.js?v=202611272110';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272110';
-import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272110';
-import { CLIMATE } from './data/equipment.js?v=202611272110';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272128';
+import { siteConditions, hToClock } from './conditions.js?v=202611272128';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272128';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272128';
+import { renderEquipment, renderMethod } from './docs.js?v=202611272128';
+import { initVisual, updateVisual } from './visual.js?v=202611272128';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272128';
+import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272128';
+import { CLIMATE } from './data/equipment.js?v=202611272128';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -18,7 +18,7 @@ const DEFAULTS = {
   trucks: [{ modelId: 'cat745', count: 6, conditionId: 'good', availabilityPct: '', payloadKg: '', bodyFillPct: '', spotMin: '', dumpMin: '' }],
   target: { volume: '', basis: 'auto' },
   // seasonal schedule: month-by-month weather from the site climate, from the work date (start) to the end date or the target
-  season: { on: true, end: '', level: 0, climate: {} },
+  season: { on: true, end: '', level: 0, climate: {}, fogStopH: 6 },
   profile: { segmentM: 100, loadAreaM: 50, dumpAreaM: 50, reverse: false, points: null, name: '' },
   ops: { shiftStart: '07:00', shiftEnd: '19:00', shiftsPerDay: 2, daysPerYear: 300, nonProdMin: 60, jobEffMin: 55,
     standby: { faceMin: 20, blastMin: 15, relocMin: 10, fuelMin: 15 }, assumptions: { dustEffLoss: 0.08, dustCapKmh: 40, darkEffLoss: 0.05 }, bunching: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', mfUseAvailability: false,
@@ -271,7 +271,9 @@ function seasonCalc(level = state.season.level) {
     // the engine result only depends on sky/surface (speed caps, RR, traction); darkness, dust and visibility go in condFactor
     const key = `${t.skyId}|${t.surfaceId}|${c.capKmh}|${mo.tempC > 30 ? Math.round(mo.tempC) : 0}`;
     if (!cache.has(key)) cache.set(key, computeScenario(inp).prod.dayT);
-    return cache.get(key) * c.condFactor;
+    // dense fog: work stops for part of the day (hours lost of the scheduled hours per day)
+    const stop = t.key === 'fog' ? Math.min(1, (+se.fogStopH || 0) / (c.shiftLenH * c.nShifts)) : 0;
+    return cache.get(key) * c.condFactor * (1 - stop);
   };
   const out = runSchedule({ start: state.site.date || todayISO(), end: se.end || '', level, overrides: se.climate || {}, targetT: tc.ok ? tc.tonnes : 0,
     workFrac: (+state.ops.daysPerYear || 365) / 365, elevM: result.siteAlt, dayTonnes });
@@ -290,20 +292,20 @@ function seasonHTML(sr = seasonResult) {
   const vol = t => fmt('vol', t / dens, 0);
   const rng = seasonRange();
   const maxT = Math.max(...sr.rows.map(r => r.perDay), 1);
-  const typeCol = { heavy: 'var(--blue)', light: '#8fb3d9', rain: '#5aa0a0', packed: '#b9c4cf', dry: 'var(--accent)' };
+  const typeCol = { fog: '#7d6aa8', heavy: 'var(--blue)', light: '#8fb3d9', rain: '#5aa0a0', packed: '#b9c4cf', dry: 'var(--accent)' };
   const rows = sr.rows.map(r => {
     const mix = r.types.map(t => `<span style="flex:${t.share};background:${typeCol[t.key]}" title="${esc(t.label)}: ${t.days.toFixed(1)} days, ${fmtU('mass', t.dayT, 0)}/day"></span>`).join('');
     return `<tr><td>${MON[r.m]} ${r.y}${r.from > 1 || r.partial || r.to < r.dim ? ` <small class="muted">(${r.partial ? `to day ${r.from + r.days - 1}` : `${r.from}–${r.to}`})</small>` : ''}</td>
-      <td>${fmt('temp', r.tempC, 0)}</td><td>${r.c.sn02.toFixed(0)}</td><td>${(r.c.pr02 - Math.min(r.c.pr02, r.c.sn02)).toFixed(0)}</td>
+      <td>${fmt('temp', r.tempC, 0)}</td><td>${r.c.sn02.toFixed(0)}</td><td>${r.c.sn5.toFixed(0)}</td><td>${(r.c.pr02 - Math.min(r.c.pr02, r.c.sn02)).toFixed(0)}</td><td>${(r.c.fog || 0).toFixed(1)}</td>
       <td><div class="stack mini">${mix}</div></td>
       <td><span class="sbar"><i style="width:${(r.perDay / maxT * 100).toFixed(1)}%"></i></span> ${fmt('mass', r.perDay, 0)}</td>
       <td>${r.workDays.toFixed(1)}</td><td>${vol(r.monthT)}</td><td><b>${vol(r.cum)}</b></td></tr>`;
   }).join('');
-  const legend = Object.entries({ heavy: 'Heavy snowfall', light: 'Light snowfall', rain: 'Rain', packed: 'Dry, snow-packed road', dry: 'Dry' }).map(([k, v]) => `<span><i style="background:${typeCol[k]}"></i>${v}</span>`).join('');
+  const legend = Object.entries({ fog: 'Dense fog', heavy: 'Heavy snow (storm ≥ 5 cm)', light: 'Light snowfall', rain: 'Rain', packed: 'Dry, snow-packed road', dry: 'Dry' }).map(([k, v]) => `<span><i style="background:${typeCol[k]}"></i>${v}</span>`).join('');
   const fin = sr.finish ? `Finishes around <b>${sr.finish.date}</b> (${sr.finish.workDays.toFixed(0)} working days)` : tc.ok ? `<b>Target not reached</b> by ${se.end || 'the end of the 3-year window'} — ${vol(sr.total)} of ${fmt('vol', tc.V, 0)} ${volU(basis)} done` : `${vol(sr.total)} ${volU(basis)} by ${se.end || 'the end of the window'} (enter a target volume to get a finish date)`;
   const span = rng && rng.every(x => x && x.finish) ? ` · range ${rng[0].finish.date} (optimistic) to ${rng[1].finish.date} (cautious)` : '';
   return `<p class="season-head">${fin}${span}<br><small class="muted">${esc(levelLabel(se.level))} · temperatures corrected from the station (${CLIMATE.elevM} m) to the haul road (${fmt('len', result.siteAlt, 0)} ${unit('len')}): ${sr.tAdj >= 0 ? '+' : ''}${sr.tAdj.toFixed(1)} °C</small></p>
-    <div class="tblwrap"><table class="tbl season-tbl"><thead><tr><th>Month</th><th>Temp ${unit('temp')}</th><th>Snow days</th><th>Rain days</th><th>Weather mix</th><th>${unit('mass')} per working day</th><th>Working days</th><th>${volU(basis)} this month</th><th>Cumulative</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="tblwrap"><table class="tbl season-tbl"><thead><tr><th>Month</th><th>Temp ${unit('temp')}</th><th>Snow days</th><th>Heavy-snow days</th><th>Rain days</th><th>Fog days</th><th>Weather mix</th><th>${unit('mass')} per working day</th><th>Working days</th><th>${volU(basis)} this month</th><th>Cumulative</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${seasonChart(sr, dens, basis)}
     <div class="stack-legend">${legend}</div>`;
 }

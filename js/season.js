@@ -6,13 +6,13 @@
 // The cautious ↔ optimistic slider moves every monthly value from its median (P50) towards the value of a
 // 1-in-10 bad year (P90 of snow/rain days, P10 of temperature) or a 1-in-10 good year (the opposite).
 // Values never go outside the range seen in the station's own records.
-import { CLIMATE } from './data/equipment.js?v=202611272110';
+import { CLIMATE } from './data/equipment.js?v=202611272128';
 
 export const LAPSE_C_PER_M = 0.006; // standard environmental lapse rate, °C per m of elevation
-export const CLIMATE_KEYS = ['tmean', 'pr02', 'sn02', 'sn5', 'sog1'];
+export const CLIMATE_KEYS = ['tmean', 'pr02', 'sn02', 'sn5', 'sog1', 'fog'];
 export const CLIMATE_LABELS = {
   tmean: 'Mean temperature (°C)', pr02: 'Days with rain or snow (≥ 0.2 mm)', sn02: 'Days with snowfall (≥ 0.2 cm)',
-  sn5: 'Days with heavy snowfall (≥ 5 cm)', sog1: 'Days with snow on the ground',
+  sn5: 'Heavy-snow days (in a storm of ≥ 5 cm total)', sog1: 'Days with snow on the ground', fog: 'Dense-fog days (work stops part of the day)',
 };
 export const daysInMonth = (y, m) => new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); // m = 0..11
 
@@ -50,13 +50,18 @@ export function dayMix(c, days) {
   const rain = clamp(c.pr02 - snow, 0, days - snow); // precipitation days that were not snow
   const dryAll = Math.max(0, days - snow - rain);
   // snow stays on the ground between snowfalls: those dry days still have a packed-snow road
-  const packed = clamp(c.sog1 - snow, 0, dryAll);
+  const packedAll = clamp(c.sog1 - snow, 0, dryAll);
+  // dense fog comes on days without precipitation; its road is packed snow when most dry days are
+  const fog = clamp(c.fog || 0, 0, dryAll);
+  const packedShare = dryAll > 0 ? packedAll / dryAll : 0;
+  const packed = packedAll * (1 - (dryAll > 0 ? fog / dryAll : 0));
   const T = [
-    { key: 'heavy', label: 'Heavy snowfall (≥ 5 cm)', skyId: 'snowing', surfaceId: 'loosesnow', days: heavy },
+    { key: 'fog', label: 'Dense fog', skyId: 'fog', surfaceId: packedShare > 0.5 ? 'packedsnow' : 'dry', days: fog },
+    { key: 'heavy', label: 'Heavy snow (storm ≥ 5 cm)', skyId: 'snowing', surfaceId: 'loosesnow', days: heavy },
     { key: 'light', label: 'Light snowfall', skyId: 'overcast', surfaceId: 'packedsnow', days: light },
     { key: 'rain', label: 'Rain', skyId: 'rain', surfaceId: 'wet', days: rain },
     { key: 'packed', label: 'Dry, snow-packed road', skyId: 'clear', surfaceId: 'packedsnow', days: packed },
-    { key: 'dry', label: 'Dry', skyId: 'clear', surfaceId: 'dry', days: dryAll - packed },
+    { key: 'dry', label: 'Dry', skyId: 'clear', surfaceId: 'dry', days: dryAll - fog - packed },
   ];
   return T.filter(t => t.days > 1e-6).map(t => ({ ...t, share: t.days / days }));
 }

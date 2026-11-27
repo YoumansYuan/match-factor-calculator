@@ -7,7 +7,7 @@
 //   × job efficiency (small operational delays only)
 //   × condition factor (weather visibility × dust × darkness)
 // Speed caps from visibility are applied to the haul itself, not as an efficiency.
-import { SKY, SURFACES, MONTHLY_TEMP_C } from './data/equipment.js?v=202611272110';
+import { SKY, SURFACES, GRADING, MONTHLY_TEMP_C } from './data/equipment.js?v=202611272128';
 
 const rad = d => d * Math.PI / 180;
 const byId = (list, id) => list.find(x => x.id === id);
@@ -99,7 +99,11 @@ export function siteConditions(site, ops) {
   const skyF = sky.eff, dustF = 1 - A.dustEffLoss * dust, darkF = 1 - A.darkEffLoss * darkFrac;
   const condFactor = skyF * dustF * darkF;
   // speed caps: visibility (sky) and a slippery road surface (snow / ice); the lowest applies
-  const caps = [sky.capKmh, surface.capKmh].filter(x => x > 0);
+  // a snow / ice speed cap is relaxed by the snow-clearing program (plowed and sanded roads are driven faster)
+  const grading = byId(GRADING, site.gradingId) || { snowClear: 0 };
+  const sc = grading.snowClear || 0;
+  const surfCap = surface.capKmh ? surface.capKmh * (1 + (surface.id === 'ice' ? 0.3 : 0.6) * sc) : 0;
+  const caps = [sky.capKmh, surfCap].filter(x => x > 0);
   let capKmh = caps.length ? Math.min(...caps) : 0;
   if (dust >= 0.5) capKmh = capKmh ? Math.min(capKmh, A.dustCapKmh) : A.dustCapKmh;
   const jobEff = Math.min(60, Math.max(0, +ops.jobEffMin || 0)) / 60;
