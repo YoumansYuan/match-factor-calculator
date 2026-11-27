@@ -2,7 +2,7 @@
 // Methods follow MIME 333 Ch.3 (Mitri & Sasmito), the Caterpillar Performance Handbook Ed.47,
 // the Komatsu Specifications & Application Handbook Ed.32 and Burt & Caccetta (2007, corrigendum 2008).
 
-import { TRUCKS, LOADERS, ROADS, WEATHER, CONDITIONS } from './data/equipment.js?v=202611270515';
+import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS } from './data/equipment.js?v=202611271723';
 
 export const G = 9.81;
 const BETA = 0.268;  // kg fuel / kW·h (MIME 333 formula sheet)
@@ -24,14 +24,19 @@ export function interp(table, x) {
 }
 
 // ---------------------------------------------------------------- road & site
+// Base road (CAT RR table) → surface condition (wet, mud, snow, ice, thaw) → grader maintenance removes part of the penalty.
 export function resolveRoad(site) {
   const road = byId(ROADS, site.roadId) || ROADS[1];
-  const w = byId(WEATHER, site.weatherId) || WEATHER[0];
-  let rr = site.rrOverride != null && site.rrOverride !== '' ? +site.rrOverride : road.rr;
-  let mu = site.tractionOverride != null && site.tractionOverride !== '' ? +site.tractionOverride : road.traction;
-  if (site.rrOverride == null || site.rrOverride === '') rr = Math.max(rr + w.rrAdd, w.rrMin);
-  if (site.tractionOverride == null || site.tractionOverride === '') mu = Math.min(mu * w.tractionMult, w.tractionMax);
-  return { rr, mu, road, weather: w };
+  const w = byId(SURFACES, site.surfaceId ?? site.weatherId) || SURFACES[0];
+  const g = byId(GRADING, site.gradingId) || { id: 'n/a', name: 'not set', keep: 1, rrExtra: 0 };
+  const rrSet = site.rrOverride != null && site.rrOverride !== '', muSet = site.tractionOverride != null && site.tractionOverride !== '';
+  let rr = rrSet ? +site.rrOverride : road.rr;
+  let mu = muSet ? +site.tractionOverride : road.traction;
+  const rrPenalty = Math.max(road.rr + w.rrAdd, w.rrMin) - road.rr;
+  const muSurface = Math.min(road.traction * w.tractionMult, w.tractionMax);
+  if (!rrSet) rr = road.rr + rrPenalty * g.keep + g.rrExtra;
+  if (!muSet) mu = road.traction - (road.traction - muSurface) * g.keep;
+  return { rr, mu, road, weather: w, surface: w, grading: g, rrPenalty, muSurface };
 }
 
 // ---------------------------------------------------------------- haul profile
@@ -108,15 +113,17 @@ export function steadySpeed(truck, gmwKg, gradePct, ctx) {
 }
 
 // Travel over segments. mode 'sim' integrates acceleration/braking; 'steady' = textbook d/v.
+// ctx.segAltitude = true → each segment uses its own mean elevation for engine altitude deration.
+const segCtx = (ctx, s) => (ctx.segAltitude && s.z0 != null ? { ...ctx, altitudeM: (s.z0 + (s.z1 ?? s.z0)) / 2 } : ctx);
 export function travel(truck, gmwKg, segs, ctx) {
   const m = gmwKg * ctx.massFactor;
-  const f = truckForces(truck, gmwKg, ctx);
+  const fs = segs.map(s => truckForces(truck, gmwKg, segCtx(ctx, s)));
   const dtEff = truck.driveAxle === 'rear' ? 0.85 : 0.83;
   const out = []; const flags = new Set();
   let totalT = 0, energyKJ = 0, poweredT = 0;
   if (ctx.travelModel === 'steady') {
     for (const s of segs) {
-      const ss = steadySpeed(truck, gmwKg, s.grade, ctx);
+      const ss = steadySpeed(truck, gmwKg, s.grade, segCtx(ctx, s));
       if (ss.flag) flags.add(ss.flag);
       const t = s.len / (ss.v / 3.6);
       const pW = Math.max(0, ss.R) * ss.v / 3.6;
@@ -129,7 +136,7 @@ export function travel(truck, gmwKg, segs, ctx) {
     const nodes = []; // {x, segIndex}
     const caps = [];
     segs.forEach((s, i) => {
-      const ss = steadySpeed(truck, gmwKg, s.grade, ctx);
+      const ss = steadySpeed(truck, gmwKg, s.grade, segCtx(ctx, s));
       if (ss.flag) flags.add(ss.flag);
       // uphill: speed emerges from force balance (cap only by top speed / limits); downhill: retarder caps
       let cap = s.grade + ctx.rr > 0 ? Math.min(truck.topSpeedKmh, ctx.speedLimitKmh || 1e9) : ss.v;
@@ -146,7 +153,7 @@ export function travel(truck, gmwKg, segs, ctx) {
       const s = segs[nodes[i].seg], dx = nodes[i].dx;
       const R = gmwKg * G * (ctx.rr + s.grade) / 100;
       const vk = v[i] * 3.6;
-      const F = f.driveN(vk);
+      const F = fs[nodes[i].seg].driveN(vk);
       const a = (F - R) / m;
       let vn = Math.sqrt(Math.max(0, v[i] * v[i] + 2 * a * dx));
       const cap = s._cap / 3.6;
@@ -166,7 +173,7 @@ export function travel(truck, gmwKg, segs, ctx) {
         const dt = dx / va; t += dt;
         const R = gmwKg * G * (ctx.rr + s.grade) / 100;
         const acc = (v[idx + 1] * v[idx + 1] - v[idx] * v[idx]) / (2 * dx);
-        const Fused = Math.max(0, Math.min(f.driveN(va * 3.6), R + m * acc));
+        const Fused = Math.max(0, Math.min(fs[si].driveN(va * 3.6), R + m * acc));
         if (Fused > 0) { energyKJ += Fused * va * dt / 1000; poweredT += dt; }
         idx++;
       }
@@ -244,11 +251,16 @@ export function computeScenario(input) {
   const haulSegs = segs;
   const returnSegs = [...segs].reverse().map(s => ({ ...s, grade: -s.grade, z0: s.z1, z1: s.z0 }));
 
+  // altitude: from the haul profile unless a fixed site altitude is given
+  const altFromProfile = site.altitudeM == null || site.altitudeM === '';
+  const meanZ = segs.reduce((a, s) => a + (s.z0 + s.z1) / 2 * s.len, 0) / (segs.reduce((a, s) => a + s.len, 0) || 1);
+  const siteAlt = altFromProfile ? meanZ : +site.altitudeM;
+  const loadAlt = altFromProfile ? segs[0].z0 : +site.altitudeM;
   const loaders = input.loaders.filter(l => l.count > 0).map(l => {
     const model = byId(LOADERS, l.modelId);
     const cond = byId(CONDITIONS, l.conditionId) || CONDITIONS[1];
     const A = l.availability != null && l.availability !== '' ? +l.availability : cond.availability;
-    return { ...l, model, cond, A, power: model.netPowerKw * interp(model.altitude, site.altitudeM) };
+    return { ...l, model, cond, A, power: model.netPowerKw * interp(model.altitude, loadAlt) };
   });
   const trucksIn = input.trucks.filter(t => t.count > 0);
   if (!loaders.length) warnings.push('No loading unit selected.');
@@ -259,7 +271,7 @@ export function computeScenario(input) {
     const cond = byId(CONDITIONS, tIn.conditionId) || CONDITIONS[1];
     const A = tIn.availability != null && tIn.availability !== '' ? +tIn.availability : cond.availability;
     const ctx = {
-      rr: road.rr, mu: road.mu, altitudeM: site.altitudeM, tempC: site.tempC, powerFactor: cond.powerFactor,
+      rr: road.rr, mu: road.mu, altitudeM: siteAlt, segAltitude: altFromProfile, tempC: site.tempC, powerFactor: cond.powerFactor,
       speedLimitKmh: site.speedLimitKmh, downhillLimitKmh: site.downhillLimitKmh, downhillGradePct: site.downhillGradePct ?? -3,
       hotRetarderDeratePerC: ops.hotRetarderDeratePerC, massFactor: ops.massFactor, brakingDecel: ops.brakingDecel,
       travelModel: ops.travelModel, idleLF: ops.idleLF,
@@ -285,7 +297,7 @@ export function computeScenario(input) {
     const dumpS = (tIn.dumpMin ?? truck.defaults.dumpMin) * 60;
     const ct = spotS + loadTimeS + haul.t + dumpS + ret.t;
     // fuel per cycle
-    const pAvail = truck.netPowerKw * interp(truck.altitude, site.altitudeM) * cond.powerFactor;
+    const pAvail = truck.netPowerKw * interp(truck.altitude, siteAlt) * cond.powerFactor;
     const fuelL = pAvail * BETA / GAMMA * (haul.loadFactor * haul.t + ret.loadFactor * ret.t + ops.idleLF * (spotS + loadTimeS + dumpS)) / 3600;
     return { tIn, truck, cond, A, n: tIn.count, pairs, loadT, loadTimeS, haul, ret, spotS, dumpS, ct, fuelL, gmwLoaded, ctx };
   });
@@ -301,8 +313,8 @@ export function computeScenario(input) {
   const trucksForMF1 = mf > 0 ? Ntot / mf : 0;
 
   // fuel & CO2 (during productive operating time)
-  const opFrac = ops.jobEff * ops.utilization;
-  const truckFuelLph = trucks.reduce((s, t) => s + t.n * t.A * t.fuelL / t.ct * 3600, 0) * opFrac;
+  const opFrac = ops.jobEff * ops.utilization * (ops.condFactor ?? 1);
+  const truckFuelLph = trucks.reduce((s, t) => s + t.n * t.A * t.fuelL / t.ct * 3600, 0) * opFrac * (ops.truckUtil ?? 1);
   const loaderFuelLph = loaders.reduce((s, l) => s + l.count * l.A * l.power * BETA * l.model.fuelLoadFactor / GAMMA, 0) * opFrac;
   const fuel = {
     truckLph: truckFuelLph, loaderLph: loaderFuelLph,
@@ -314,12 +326,13 @@ export function computeScenario(input) {
   return {
     road, segs, trucks, loaders, lt, mf, mfNominal, mfAvail, prod, trucksForMF1, avgA,
     trucksForMF1WithAvail: avgA > 0 ? trucksForMF1 / avgA : 0, fuel, warnings: [...new Set(warnings)],
-    totalHaulM: segs.reduce((s, x) => s + x.len, 0),
+    totalHaulM: segs.reduce((s, x) => s + x.len, 0), siteAlt, loadAlt, altFromProfile,
   };
 }
 
 export function production(trucks, loaders, lt, ops) {
-  const truckRate = trucks.reduce((s, t) => s + t.n * t.A * t.loadT / t.ct, 0) * (ops.bunching ?? 1); // t/s
+  // truck-only standby (fuelling/service) reduces truck time; loader-stopping standby is in utilization
+  const truckRate = trucks.reduce((s, t) => s + t.n * t.A * t.loadT / t.ct, 0) * (ops.bunching ?? 1) * (ops.truckUtil ?? 1); // t/s
   const fleetLoad = trucks.reduce((s, t) => s + t.n * t.A * t.loadT, 0);
   let loaderRate = 0;
   loaders.forEach((l, j) => {
@@ -327,7 +340,7 @@ export function production(trucks, loaders, lt, ops) {
     if (ltj > 0) loaderRate += l.count * l.A / ltj * fleetLoad;
   });
   const theo = Math.min(truckRate, loaderRate);
-  const tph = theo * 3600 * ops.jobEff * ops.utilization;
+  const tph = theo * 3600 * ops.jobEff * ops.utilization * (ops.condFactor ?? 1);
   const shiftT = tph * ops.shiftH;
   return {
     truckCapTph: truckRate * 3600, loaderCapTph: loaderRate * 3600, theoTph: theo * 3600, tph,

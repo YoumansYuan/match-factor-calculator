@@ -1,8 +1,9 @@
-// Visual (friendly) mode: an animated mine scene you can click to change equipment,
+// Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611270515';
-import { byId } from './engine.js?v=202611270515';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611270515';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611271723';
+import { hToClock } from './conditions.js?v=202611271723';
+import { byId } from './engine.js?v=202611271723';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611271723';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -26,6 +27,7 @@ export function updateVisual(result) {
   renderFleetBar();
   renderSummary();
   buildScene();
+  refreshPopLive();
 }
 
 // ------------------------------------------------------------------ mapping state <-> result
@@ -217,9 +219,13 @@ function buildRoadStrip() {
     <circle cx="${P[0][0]}" cy="${P[0][1]}" r="4" class="dot"/><circle cx="${P.at(-1)[0]}" cy="${P.at(-1)[1]}" r="4" class="dot"/>
     <text class="lbl-xs" x="${X0 - 8}" y="${P[0][1] + 4}" text-anchor="end">Load</text>
     <text class="lbl-xs" x="${X1 + 8}" y="${P.at(-1)[1] + 4}">Dump</text>
-    <text class="lbl-sm" x="12" y="18">Haul road · ${fmtU('len', L, 0)} one way · ${fmt('len', rise, 0)} ${unit('len')} up, ${fmt('len', fall, 0)} ${unit('len')} down when loaded · ${esc(byId(WEATHER, api.state().site.weatherId)?.name || '')} · tap to change</text>
+    <text class="lbl-sm" x="12" y="18">Haul road · ${fmtU('len', L, 0)} one way · ${fmt('len', rise, 0)} ${unit('len')} up, ${fmt('len', fall, 0)} ${unit('len')} down when loaded · ${esc(skyName())}, ${esc(surfName())} road · tap to change</text>
   </g>`;
 }
+
+const skyName = () => byId(SKY, api.state().site.skyId)?.name || '';
+const surfName = () => byId(SURFACES, api.state().site.surfaceId)?.name || '';
+const hm = h => { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`; };
 
 // ------------------------------------------------------------------ fleet bar
 function renderFleetBar() {
@@ -235,7 +241,7 @@ function renderFleetBar() {
   $('#fleet-bar').innerHTML = `
     <div class="fb-group"><span class="fb-lbl">Excavators</span>${lo}<button class="chip add" data-pop="add-loader">+ Add excavator</button></div>
     <div class="fb-group"><span class="fb-lbl">Trucks</span>${tr}<button class="chip add" data-pop="add-truck">+ Add trucks</button></div>
-    <div class="fb-group"><span class="fb-lbl">Site</span><button class="chip" data-pop="material"><b>${esc(byId(MATERIALS, st.materialId)?.name || 'Material')}</b><small>${fmt('dens', st.material.looseTm3, 2)} ${unit('dens')}</small></button><button class="chip" data-pop="road"><b>Haul road</b><small>${esc(byId(WEATHER, st.site.weatherId)?.name || '')}</small></button><button class="chip" data-pop="shift"><b>Work hours</b><small>${st.ops.shiftH} h × ${st.ops.shiftsPerDay}/day</small></button></div>`;
+    <div class="fb-group"><span class="fb-lbl">Site</span><button class="chip" data-pop="material"><b>${esc(byId(MATERIALS, st.materialId)?.name || 'Material')}</b><small>${fmt('dens', api.matDerived().loose, 2)} ${unit('dens')} in the truck</small></button><button class="chip" data-pop="road"><b>Weather &amp; road</b><small>${esc(skyName())} · ${esc(surfName())}</small></button><button class="chip" data-pop="shift"><b>Work hours</b><small>${esc(st.ops.shiftStart)}–${esc(st.ops.shiftEnd)} × ${st.ops.shiftsPerDay}/day</small></button></div>`;
 }
 
 // ------------------------------------------------------------------ plain-language results
@@ -285,12 +291,14 @@ function renderSummary() {
       <div class="v-sug">${sug}</div>
     </div>
     <div class="v-stats">
-      <div class="v-stat"><span class="lbl">Moved per hour</span><b>${fmtU('rate', R.prod.tph, 0)}</b><small>${fmtU('mass', R.prod.shiftT, 0)} per ${st.ops.shiftH} h shift</small></div>
+      <div class="v-stat"><span class="lbl">Moved per hour</span><b>${fmtU('rate', R.prod.tph, 0)}</b><small>${fmtU('mass', R.prod.shiftT, 0)} per shift (${hm(api.cond().operatingH)} operating)</small></div>
+      <div class="v-stat"><span class="lbl">Volume per hour</span><b>${fmt('vol', R.prod.tph / api.matDerived().bank, 0)} ${api.bcU()}</b><small>dug · ${fmt('vol', R.prod.tph / api.matDerived().loose, 0)} ${api.lcU()} at the dump</small></div>
       <div class="v-stat"><span class="lbl">Per year</span><b>${fmt('mass', R.prod.yearT / 1e6, 2)} M ${unit('mass')}</b><small>${st.ops.daysPerYear} days, ${st.ops.shiftsPerDay} shifts/day</small></div>
       <div class="v-stat"><span class="lbl">Slowest link</span><b>${/^loaders/.test(R.prod.bottleneck) ? 'Excavator' : 'Trucks'}</b><small>${/^loaders/.test(R.prod.bottleneck) ? 'trucks queue at the excavator' : 'the excavator waits for trucks'}</small></div>
       <div class="v-stat"><span class="lbl">Fuel</span><b>${fmt('fuelpm', R.fuel.lPerT, 2)} ${unit('fuelpm')}</b><small>${fmt('co2pm', R.fuel.co2KgPerT, 2)} ${unit('co2pm')} CO₂</small></div>
     </div>
     <div class="v-card"><h3>Where each truck's time goes</h3>${types}</div>
+    <div class="v-card"><h3>Where the shift time goes</h3>${api.waterfallHTML(api.waterfall())}</div>
     ${w.length ? `<div class="warn-box"><b>Worth checking</b><ul>${w.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}`;
 }
 
@@ -329,8 +337,10 @@ function renderPop() {
         <label>Bucket<select data-bind="loaders.${i}.bucketId">${m.buckets.map(b => `<option value="${b.id}" ${b.id === l.bucketId ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
         <label>Digging conditions<select data-bind="loaders.${i}.jobCond">${JOB_CONDITIONS.map(x => `<option value="${x.id}" ${x.id === l.jobCond ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
         <label>Machine condition<select data-bind="loaders.${i}.conditionId">${CONDITIONS.map(x => `<option value="${x.id}" ${x.id === l.conditionId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        <label>Availability <span class="u">% (blank = from condition)</span><input type="number" step="1" min="0" max="100" data-bind="loaders.${i}.availabilityPct" placeholder="${pct(byId(CONDITIONS, l.conditionId).availability)}"></label>
         <label>Swing angle to truck <span class="u">°</span><input type="number" step="5" data-bind="loaders.${i}.swingDeg"></label>
       </div>
+      <p class="note">Machine condition sets the availability (worse condition → more breakdowns and repair time), plus a power factor and a slower cycle. Type an availability to override it.</p>
       ${slider(`loaders.${i}.fillOverride`, l.fillOverride === '' ? '' : +l.fillOverride, st.material.fill, 50, 120, 'Bucket fill factor', `How full each bucket really is compared with its rated (heaped) size. Typical for ${esc(byId(MATERIALS, st.materialId)?.name || 'this material')}: ${pct(st.material.fill)} %. Sticky or blocky material fills less; loose, moist soil can fill over 100 %.`)}
       <label>Cycle time override <span class="u">s per bucket</span><input type="number" step="0.5" data-bind="loaders.${i}.cycleOverrideS" placeholder="auto"></label>
       <div class="pop-actions"><button class="btn ghost danger" data-remove="loaders.${i}">Remove this excavator</button></div>`;
@@ -347,6 +357,7 @@ function renderPop() {
       <div class="grid g2">
         <label>Rated payload <span class="u">(${unit('kg')})</span><input type="number" step="100" data-bind="trucks.${i}.payloadKg" data-q="kg" placeholder="${fmt('kg', m.ratedPayloadKg, 0).replace(/,/g, '')}"></label>
         <label>Machine condition<select data-bind="trucks.${i}.conditionId">${CONDITIONS.map(x => `<option value="${x.id}" ${x.id === t.conditionId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        <label>Availability <span class="u">% (blank = from condition)</span><input type="number" step="1" min="0" max="100" data-bind="trucks.${i}.availabilityPct" placeholder="${pct(byId(CONDITIONS, t.conditionId).availability)}"></label>
         <label>Time to position at the excavator <span class="u">min</span><input type="number" step="0.05" data-bind="trucks.${i}.spotMin" placeholder="${m.defaults.spotMin}"></label>
         <label>Time to turn and dump <span class="u">min</span><input type="number" step="0.05" data-bind="trucks.${i}.dumpMin" placeholder="${m.defaults.dumpMin}"></label>
       </div>
@@ -357,42 +368,79 @@ function renderPop() {
     body.innerHTML = `<p class="note">Pick a model. You can change the number and details next.</p><div class="mcards">${(isT ? TRUCKS : LOADERS).map((x, k) => modelCard(x, false, isT ? 'new-truck' : 'new-loader', truckColor(st.trucks.length))).join('')}</div>`;
   } else if (kind === 'material') {
     title.textContent = 'Material being moved';
-    const mat = byId(MATERIALS, st.materialId);
+    const mat = byId(MATERIALS, st.materialId), md = api.matDerived();
     body.innerHTML = `
       <div class="seg">${MATERIALS.map(x => `<button class="${x.id === st.materialId ? 'sel' : ''}" data-mat="${x.id}">${esc(x.name)}</button>`).join('')}</div>
       <div class="grid g2">
-        <label>Loose density <span class="u">(${unit('dens')})</span><input type="number" step="0.01" data-bind="material.looseTm3" data-q="dens"></label>
-        <label>Swell <span class="u">%</span><input type="number" step="1" data-bind="material.swellPct"></label>
+        <label>${md.isBlast ? 'Density of the blasted muck pile' : 'In-situ density at the dig face'} <span class="u">(${unit('dens')})</span><input type="number" step="0.01" data-bind="material.digTm3" data-q="dens"></label>
+        <label>Swell from dig face to truck <span class="u">%</span><input type="number" step="1" data-bind="material.swellPct"></label>
+        ${md.isBlast ? `<label>Solid rock density before blast <span class="u">(${unit('dens')}, for BCM only)</span><input type="number" step="0.01" data-bind="material.bankTm3" data-q="dens"></label>` : ''}
       </div>
+      <p class="note" id="pop-live">${matNote()}</p>
       ${slider('material.fill', st.material.fill, mat ? mat.fill : 0.9, 50, 120, 'Bucket fill factor (all excavators)', 'How full a bucket gets in this material. An excavator can override this in its own settings.')}
       <label class="check"><input type="checkbox" data-bind="material.frozen"> Frozen or cemented (buckets fill less, digging is slower)</label>
       <p class="note">${mat ? esc(mat.src) : ''}</p>`;
   } else if (kind === 'road') {
-    title.textContent = 'Haul road & site';
+    title.textContent = 'Weather, site & haul road';
+    const c = api.cond();
     body.innerHTML = `
-      <h4>Weather today</h4><div class="seg">${WEATHER.map(x => `<button class="${x.id === st.site.weatherId ? 'sel' : ''}" data-weather="${x.id}">${esc(x.name)}</button>`).join('')}</div>
-      <label>Road surface<select data-bind="site.roadId">${ROADS.map(x => `<option value="${x.id}" ${x.id === st.site.roadId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <h4>Weather (visibility)</h4><div class="seg">${SKY.map(x => `<button class="${x.id === st.site.skyId ? 'sel' : ''}" data-sky="${x.id}">${esc(x.name)}</button>`).join('')}</div>
       <div class="grid g2">
+        <label>Work date<input type="date" data-bind="site.date"></label>
+        <label>Air temperature <span class="u">(${unit('temp')}, blank = month average)</span><input type="number" step="1" data-bind="site.tempC" data-q="temp" placeholder="${c ? fmt('temp', c.tempAuto, 0) : ''}"></label>
+        <label>Site latitude <span class="u">°N</span><input type="number" step="0.1" data-bind="site.latitude"></label>
+        <label>Site longitude <span class="u">°E</span><input type="number" step="0.1" data-bind="site.longitude"></label>
+      </div>
+      <h4>Road</h4>
+      <div class="grid g2">
+        <label>Surface condition today<select data-bind="site.surfaceId">${SURFACES.map(x => `<option value="${x.id}" ${x.id === st.site.surfaceId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        <label>Road type<select data-bind="site.roadId">${ROADS.map(x => `<option value="${x.id}" ${x.id === st.site.roadId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        <label>Grader maintenance<select data-bind="site.gradingId">${GRADING.map(x => `<option value="${x.id}" ${x.id === st.site.gradingId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        <label class="check"><input type="checkbox" data-bind="site.waterTruck" ${c && c.water.status === 'no' ? 'disabled' : ''}> Water truck for dust control${c && c.water.status === 'no' ? ' <small>(too cold, water freezes)</small>' : c && c.water.status === 'day' ? ' <small>(daytime only)</small>' : ''}</label>
         <label>Speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.speedLimitKmh" data-q="speed"></label>
         <label>Downhill speed limit <span class="u">(${unit('speed')})</span><input type="number" step="1" data-bind="site.downhillLimitKmh" data-q="speed"></label>
-        <label>Altitude <span class="u">(${unit('len')})</span><input type="number" step="10" data-bind="site.altitudeM" data-q="len"></label>
-        <label>Temperature <span class="u">(${unit('temp')})</span><input type="number" step="1" data-bind="site.tempC" data-q="temp"></label>
       </div>
+      <p class="note" id="pop-live">${roadNote()}</p>
       <h4>Road shape (distance and elevation)</h4>
-      <p class="note">Now using: ${esc(st.profile.name || 'no profile')}. Upload a CSV with <code>distance, elevation</code> or <code>x, y, z</code> columns, loading point first.</p>
-      <div class="profile-src"><label class="btn file">Upload CSV<input type="file" id="v-profile-file" accept=".csv,.txt"></label><button class="btn ghost" data-sample="1">Use sample road</button></div>`;
+      <p class="note">Now using: ${esc(st.profile.name || 'no profile')}. Engine altitude deration uses the elevation along this profile, so there is no separate altitude input.</p>
+      <div class="profile-src"><button class="btn" data-ped="1">Draw / edit profile</button><label class="btn ghost file">Upload CSV<input type="file" id="v-profile-file" accept=".csv,.txt"></label><button class="btn ghost" data-sample="1">Use sample road</button></div>`;
   } else if (kind === 'shift') {
     title.textContent = 'Work hours';
+    const c = api.cond();
     body.innerHTML = `<div class="grid g2">
-      <label>Shift length <span class="u">h</span><input type="number" step="0.5" data-bind="ops.shiftH"></label>
-      <label>Shifts per day<input type="number" step="1" data-bind="ops.shiftsPerDay"></label>
+      <label>Shift starts<input type="time" data-bind="ops.shiftStart"></label>
+      <label>Shift ends<input type="time" data-bind="ops.shiftEnd"></label>
+      <label>Shifts per day<input type="number" step="1" min="1" max="3" data-bind="ops.shiftsPerDay"></label>
       <label>Working days per year<input type="number" step="1" data-bind="ops.daysPerYear"></label>
-      <label>Productive minutes per hour<input type="number" step="1" max="60" data-bind="ops.jobEffMin"></label>
-      <label>Utilization <span class="u">%</span><input type="number" step="1" data-bind="ops.utilizationPct"></label>
-    </div><p class="note">Productive minutes per hour covers breaks, shift change and small delays (50 min/h is typical).</p>`;
+      <label>Meetings, planning, shift change <span class="u">min/shift</span><input type="number" step="5" data-bind="ops.nonProdMin"></label>
+      <label>Job efficiency <span class="u">productive min per hour</span><input type="number" step="1" max="60" data-bind="ops.jobEffMin"></label>
+    </div>
+    <h4>Standby (min per shift)</h4>
+    <div class="grid g2">
+      <label>Face clean-up / dozer support<input type="number" step="5" data-bind="ops.standby.faceMin"></label>
+      <label>Blast clearance (any material)<input type="number" step="5" data-bind="ops.standby.blastMin"></label>
+      <label>Excavator relocation<input type="number" step="5" data-bind="ops.standby.relocMin"></label>
+      <label>Truck fuelling / service <span class="u">each truck</span><input type="number" step="5" data-bind="ops.standby.fuelMin"></label>
+    </div>
+    <p class="note">Each loss is counted once: meetings come off the clock, breakdowns come from machine condition (availability), standby stops the excavator (fuelling stops only that truck), and job efficiency covers only small delays (55 min/h typical). Weather, dust and darkness are applied last.</p>
+    <div id="pop-live">${R && c ? api.waterfallHTML(api.waterfall()) : ''}</div>`;
   }
   api.renderBound();
   if (!d.open) { d.showModal(); }
+}
+function matNote() {
+  const st = api.state(), md = api.matDerived(), dd = unit('dens') === 't/m³' ? 2 : 0;
+  return `Density in the truck = ${fmt('dens', st.material.digTm3, dd)} ÷ (1 + ${+st.material.swellPct || 0} %) = <b>${fmt('dens', md.loose, dd)} ${unit('dens')}</b>. Each load stops at whichever comes first: the rated payload (weight) or the usable body volume.${md.isBlast ? ' Blasted rock has already swelled in the blast, so swell into the truck is normally 0 %; the solid density is only used to report BCM.' : ''}`;
+}
+function roadNote() {
+  const c = api.cond(); if (!c) return '';
+  return `${esc(c.water.label)} for the water truck at ${fmt('temp', c.tempC, 0)} ${unit('temp')}. Daylight ${hToClock(c.sun.sunrise)}–${hToClock(c.sun.sunset)}, so ${(c.darkFrac * 100).toFixed(0)} % of shift time is in the dark.${c.dust > 0 ? ` Dry road without water: ${c.dust >= 0.5 ? 'heavy' : 'light'} dust.` : ''}${c.capKmh ? ` Visibility speed cap ${fmtU('speed', c.capKmh, 0)}.` : ''} Rolling resistance ${R ? R.road.rr.toFixed(1) : '–'} %, traction ${R ? R.road.mu.toFixed(2) : '–'}.`;
+}
+// keep the live line in an open dialog current without re-rendering (which would steal input focus)
+function refreshPopLive() {
+  const el = document.getElementById('pop-live'); if (!el || !popCtx) return;
+  const k = popCtx.split(':')[0];
+  el.innerHTML = k === 'material' ? matNote() : k === 'road' ? roadNote() : k === 'shift' ? api.waterfallHTML(api.waterfall()) : el.innerHTML;
 }
 function openPop(ctx) { popCtx = ctx; renderPop(); }
 function closePop() { popCtx = null; const d = $('#pop'); if (d.open) d.close(); }
@@ -436,8 +484,9 @@ function wire() {
     if (rs) { api.setPath(rs.dataset.reset, ''); afterChange(true); return; }
     const mat = e.target.closest('[data-mat]');
     if (mat) { api.setMaterial(mat.dataset.mat); afterChange(true); return; }
-    const wx = e.target.closest('[data-weather]');
-    if (wx) { api.state().site.weatherId = wx.dataset.weather; afterChange(true); return; }
+    const wx = e.target.closest('[data-sky]');
+    if (wx) { const st = api.state(), sk = byId(SKY, wx.dataset.sky); st.site.skyId = sk.id; if (sk.surface) st.site.surfaceId = sk.surface; afterChange(true); return; }
+    if (e.target.closest('[data-ped]')) { closePop(); api.editProfile(); return; }
     if (e.target.closest('[data-sample]')) { api.loadSample().then(() => afterChange(true)); return; }
     const ap = e.target.closest('[data-apply]');
     if (ap) {
@@ -459,6 +508,8 @@ function wire() {
     api.schedule();
   });
   document.addEventListener('change', e => {
+    const b = e.target.dataset && e.target.dataset.bind;
+    if (b && popCtx && e.target.closest('#pop') && (e.target.tagName === 'SELECT' || e.target.type === 'checkbox' || e.target.type === 'date')) { setTimeout(() => { if (popCtx) renderPop(); }, 160); }
     if (e.target.id === 'v-profile-file') {
       const f = e.target.files[0]; if (!f) return;
       api.loadProfileFile(f).then(() => afterChange(true)).catch(err => { const n = $('#pop-body .note'); if (n) n.textContent = `⚠ ${err.message}`; });

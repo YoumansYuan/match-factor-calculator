@@ -1,30 +1,93 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES } from './data/equipment.js?v=202611270515';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp } from './engine.js?v=202611270515';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611270515';
-import { renderEquipment, renderMethod } from './docs.js?v=202611270515';
-import { initVisual, updateVisual } from './visual.js?v=202611270515';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271723';
+import { siteConditions, hToClock } from './conditions.js?v=202611271723';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp } from './engine.js?v=202611271723';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611271723';
+import { renderEquipment, renderMethod } from './docs.js?v=202611271723';
+import { initVisual, updateVisual } from './visual.js?v=202611271723';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611271723';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
-  site: { altitudeM: 1700, tempC: 10, roadId: 'firm', weatherId: 'dry', rrOverride: '', tractionOverride: '', speedLimitKmh: 50, downhillLimitKmh: 35, downhillGradePct: -3 },
+  site: { date: '', latitude: 49.7, longitude: -114.9, utcOffsetStd: -7, dst: true, tempC: '', skyId: 'clear', roadId: 'firm', surfaceId: 'dry', gradingId: 'shift', waterTruck: true,
+    rrOverride: '', tractionOverride: '', speedLimitKmh: 50, downhillLimitKmh: 35, downhillGradePct: -3 },
   materialId: 'till',
   material: { ...pickMat('till'), frozen: false },
   loaders: [{ modelId: 'cat390fl', bucketId: 'sd46', count: 1, jobCond: 'C', swingDeg: 90, conditionId: 'good', availabilityPct: '', cycleOverrideS: '', fillOverride: '' }],
   trucks: [{ modelId: 'cat745', count: 6, conditionId: 'good', availabilityPct: '', payloadKg: '', bodyFillPct: '', spotMin: '', dumpMin: '' }],
   profile: { segmentM: 100, loadAreaM: 50, dumpAreaM: 50, reverse: false, points: null, name: '' },
-  ops: { shiftH: 10, shiftsPerDay: 2, daysPerYear: 300, jobEffMin: 50, utilizationPct: 85, bunching: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', mfUseAvailability: false,
+  ops: { shiftStart: '07:00', shiftEnd: '19:00', shiftsPerDay: 2, daysPerYear: 300, nonProdMin: 60, jobEffMin: 55,
+    standby: { faceMin: 20, blastMin: 15, relocMin: 10, fuelMin: 15 }, assumptions: { dustEffLoss: 0.08, dustCapKmh: 40, darkEffLoss: 0.05 }, bunching: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', mfUseAvailability: false,
     brakingDecel: 0.6, massFactor: 1.05, idleLF: 0.15, hotRetarderDeratePerC: 0.01, firstPassFrac: 0.2, frozenFillMult: 0.9, frozenCycleMult: 1.1 },
   units: 'si',
 };
-function pickMat(id) { const m = byId(MATERIALS, id); return { looseTm3: m.looseTm3, fill: m.fill, swellPct: m.swellPct }; }
+function pickMat(id) { const m = byId(MATERIALS, id); return { digTm3: m.digTm3, swellPct: m.swellPct, bankTm3: m.bankTm3 ?? '', fill: m.fill }; }
 const clone = o => JSON.parse(JSON.stringify(o));
 let state = load() || clone(DEFAULTS);
 let result = null;
 const charts = {};
 
 function load() {
-  try { const s = localStorage.getItem('mfc-state-v1'); if (s) return Object.assign(clone(DEFAULTS), JSON.parse(s)); } catch (e) { /* storage unavailable */ }
+  try { const s = localStorage.getItem('mfc-state-v1'); if (s) return migrate(JSON.parse(s)); } catch (e) { /* storage unavailable */ }
   return null;
+}
+// Bring a saved scenario from an older version up to the current inputs (deep-merges defaults).
+function migrate(saved) {
+  const d = clone(DEFAULTS);
+  const st = Object.assign(d, saved, {
+    site: { ...d.site, ...(saved.site || {}) }, material: { ...d.material, ...(saved.material || {}) },
+    ops: { ...d.ops, ...(saved.ops || {}), standby: { ...d.ops.standby, ...((saved.ops || {}).standby || {}) }, assumptions: { ...d.ops.assumptions, ...((saved.ops || {}).assumptions || {}) } },
+    profile: { ...d.profile, ...(saved.profile || {}) },
+  });
+  if (st.material.digTm3 == null && st.material.looseTm3 != null) { // v1: loose density + swell
+    const m = byId(MATERIALS, st.materialId);
+    if (m && m.blasted) Object.assign(st.material, { digTm3: +st.material.looseTm3, swellPct: 0, bankTm3: m.bankTm3 });
+    else st.material.digTm3 = +(st.material.looseTm3 * (1 + (+st.material.swellPct || 0) / 100)).toFixed(3);
+  }
+  delete st.material.looseTm3;
+  if (st.site.weatherId && !(saved.site || {}).surfaceId) st.site.surfaceId = st.site.weatherId;
+  delete st.site.weatherId; delete st.site.altitudeM;
+  if (saved.ops && saved.ops.shiftH != null && !saved.ops.shiftStart) { st.ops.shiftEnd = hToClock(7 + +saved.ops.shiftH + st.ops.nonProdMin / 60); if (+saved.ops.jobEffMin === 50) st.ops.jobEffMin = 55; }
+  delete st.ops.shiftH; delete st.ops.utilizationPct;
+  return st;
+}
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+let lastCond = null, lastOps = null;
+function matDerived(m = state.material) {
+  const def = byId(MATERIALS, state.materialId) || {};
+  const loose = looseOf(m), isBlast = !!def.blasted;
+  const bank = isBlast && +m.bankTm3 > 0 ? +m.bankTm3 : +m.digTm3;
+  return { loose, bank, isBlast, loadFactor: 1 / (1 + (+m.swellPct || 0) / 100) };
+}
+// Hours per shift for an average truck: where the scheduled time goes (each loss applied once).
+function waterfall(r = result, c = lastCond) {
+  if (!r || !c) return [];
+  const A = r.avgA || 1;
+  const op = c.operatingH, avail = op * A;
+  const afterStandby = avail * c.utilization * c.truckUtil;
+  const afterDelays = afterStandby * c.jobEff;
+  const eff = afterDelays * c.condFactor;
+  return [
+    { key: 'Scheduled shift', h: c.shiftLenH, total: true },
+    { key: 'Meetings, planning, shift change', h: -c.nonProdH },
+    { key: 'Mechanical downtime (availability)', h: -(op - avail) },
+    { key: 'Standby (face clean-up, blasting, relocation, fuelling)', h: -(avail - afterStandby) },
+    { key: 'Small operational delays (job efficiency)', h: -(afterStandby - afterDelays) },
+    { key: 'Weather, dust & darkness', h: -(afterDelays - eff) },
+    { key: 'Effective production time', h: eff, total: true },
+  ];
+}
+const bcU = () => (getSystem() === 'si' ? 'BCM' : 'BCY'), lcU = () => (getSystem() === 'si' ? 'LCM' : 'LCY');
+// Horizontal waterfall: each loss is a red bar hanging from the running total, totals are solid.
+function waterfallHTML(rows) {
+  if (!rows.length) return '';
+  const top = rows[0].h || 1; let run = top;
+  const fmtH = h => { const m = Math.round(Math.abs(h) * 60); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`; };
+  return `<div class="wf">${rows.map((r, i) => {
+    let left, w, cls;
+    if (r.total) { left = 0; w = r.h / top * 100; cls = i ? 'wf-end' : 'wf-tot'; run = r.h; }
+    else { w = -r.h / top * 100; run += r.h; left = run / top * 100; cls = 'wf-loss'; }
+    return `<div class="wf-row"><span class="wf-k">${esc(r.key)}</span><span class="wf-track"><i class="${cls}" style="left:${left.toFixed(2)}%;width:${Math.max(0.3, w).toFixed(2)}%"></i></span><b class="wf-v">${r.total ? '' : '−'}${fmtH(r.h)}</b></div>`;
+  }).join('')}<p class="note">Per shift, averaged over the truck fleet. Each loss is applied once, in this order.</p></div>`;
 }
 function save() { try { localStorage.setItem('mfc-state-v1', JSON.stringify(state)); } catch (e) { /* ignore */ } }
 
@@ -40,7 +103,9 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 function fillSelect(el, list, val, label = x => x.name) { el.innerHTML = list.map(x => `<option value="${x.id}">${esc(label(x))}</option>`).join(''); if (val != null) el.value = val; }
 function initSelects() {
   fillSelect($('#sel-road'), ROADS, state.site.roadId, r => `${r.name} (RR ${r.rr} %, μ ${r.traction})`);
-  fillSelect($('#sel-weather'), WEATHER, state.site.weatherId);
+  fillSelect($('#sel-surface'), SURFACES, state.site.surfaceId);
+  fillSelect($('#sel-sky'), SKY, state.site.skyId);
+  fillSelect($('#sel-grading'), GRADING, state.site.gradingId);
   fillSelect($('#sel-material'), MATERIALS, state.materialId);
 }
 
@@ -60,9 +125,11 @@ function onBoundInput(e) {
   let v;
   if (el.type === 'checkbox') v = el.checked;
   else if (el.tagName === 'SELECT') v = el.value;
+  else if (['date', 'time', 'text'].includes(el.type)) v = el.value;
   else v = el.value === '' ? '' : (el.dataset.q ? toSI(el.dataset.q, el.value) : +el.value);
   setPath(state, p, v);
-  if (p.startsWith('loaders.') || p.startsWith('trucks.')) { if (/modelId$/.test(p)) { normaliseRows(); renderRows(); } }
+  if (p.startsWith('loaders.') || p.startsWith('trucks.')) { if (/(modelId|conditionId)$/.test(p)) { normaliseRows(); renderRows(); } }
+  if (p === 'site.skyId') { const sky = byId(SKY, v); if (sky && sky.surface) state.site.surfaceId = sky.surface; }
   schedule();
 }
 
@@ -106,9 +173,15 @@ function renderRows() {
 // ------------------------------------------------------------------ engine input
 function toEngineInput() {
   const s = state;
+  if (!s.site.date) s.site.date = todayISO();
+  const c = lastCond = siteConditions(s.site, s.ops);
+  const cap = c.capKmh || Infinity;
+  const site = { ...s.site, tempC: c.tempC, speedLimitKmh: Math.min(+s.site.speedLimitKmh || Infinity, cap), downhillLimitKmh: Math.min(+s.site.downhillLimitKmh || Infinity, cap) };
+  delete site.altitudeM;
+  lastOps = { ...s.ops, jobEff: c.jobEff, utilization: c.utilization, truckUtil: c.truckUtil, condFactor: c.condFactor, shiftH: c.operatingH, shiftsPerDay: c.nShifts };
   return {
-    site: { ...s.site },
-    material: { ...s.material },
+    site,
+    material: { looseTm3: looseOf(s.material), fill: s.material.fill, frozen: s.material.frozen },
     loaders: s.loaders.map(l => {
       const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
       return { modelId: l.modelId, count: +l.count || 0, bucketM3: b.m3, loadHeightM: b.loadHeightM, jobCond: l.jobCond, swingDeg: l.swingDeg === '' ? 90 : +l.swingDeg,
@@ -117,7 +190,7 @@ function toEngineInput() {
     trucks: s.trucks.map(t => ({ modelId: t.modelId, count: +t.count || 0, conditionId: t.conditionId, availability: t.availabilityPct === '' ? '' : +t.availabilityPct / 100,
       payloadKg: t.payloadKg === '' || t.payloadKg == null ? null : +t.payloadKg, bodyFill: t.bodyFillPct === '' || t.bodyFillPct == null ? '' : +t.bodyFillPct / 100, spotMin: t.spotMin === '' ? undefined : +t.spotMin, dumpMin: t.dumpMin === '' ? undefined : +t.dumpMin })),
     profile: { ...s.profile, points: s.profile.points },
-    ops: { ...s.ops, jobEff: s.ops.jobEffMin / 60, utilization: s.ops.utilizationPct / 100 },
+    ops: lastOps,
   };
 }
 
@@ -128,11 +201,13 @@ function run() {
   save();
   renderBound();
   const road = resolveRoad(state.site);
-  $('#road-resolved').innerHTML = `Used: RR <b>${road.rr.toFixed(1)} %</b> · traction <b>${road.mu.toFixed(2)}</b>${road.weather.note ? `<br><small>${esc(road.weather.note)}</small>` : ''}`;
+  $('#road-resolved').innerHTML = `Used: RR <b>${road.rr.toFixed(1)} %</b> · traction <b>${road.mu.toFixed(2)}</b>${road.surface.note ? `<br><small>${esc(road.surface.note)}</small>` : ''}`;
   const mat = byId(MATERIALS, state.materialId);
   $('#material-note').textContent = mat ? `Source: ${mat.src}` : '';
   if (!state.profile.points) return;
-  try { result = computeScenario(toEngineInput()); } catch (e) { $('#warnings').innerHTML = `<b>Error:</b> ${esc(e.message)}`; console.error(e); return; }
+  let input;
+  try { input = toEngineInput(); result = computeScenario(input); } catch (e) { $('#warnings').innerHTML = `<b>Error:</b> ${esc(e.message)}`; console.error(e); return; }
+  renderSiteDerived();
   renderTags(); renderKPIs(); renderTables(); renderCharts(); renderProfileSummary();
   updateVisual(result);
 }
@@ -176,7 +251,7 @@ const min = s => (s / 60).toFixed(2);
 function renderTables() {
   const r = result;
   let rows = r.trucks.map(t => {
-    const tph = t.loadT / t.ct * 3600 * state.ops.jobEffMin / 60 * state.ops.utilizationPct / 100 * t.A;
+    const tph = t.loadT / t.ct * 3600 * lastOps.jobEff * lastOps.utilization * lastOps.truckUtil * lastOps.condFactor * t.A;
     return `<tr><td>${esc(t.truck.name)}</td><td>${t.n}</td><td>${(t.A * 100).toFixed(0)} %</td><td>${fmt('mass', t.loadT, 1)}</td><td>${min(t.spotS)}</td><td>${min(t.loadTimeS)}</td><td>${min(t.haul.t)}</td><td>${min(t.dumpS)}</td><td>${min(t.ret.t)}</td><td><b>${min(t.ct)}</b></td><td>${fmt('rate', tph, 0)}</td><td>${fmt('fuel', t.fuelL / t.ct * 3600, 0)}</td></tr>`;
   }).join('');
   $('#tbl-trucks').innerHTML = `<thead><tr><th>Truck</th><th>No.</th><th>Avail.</th><th>Load (${unit('mass')})</th><th>Spot</th><th>Load</th><th>Haul</th><th>Dump</th><th>Return</th><th>Cycle (min)</th><th>${unit('rate')} / truck</th><th>Fuel ${unit('fuel')}/h</th></tr></thead><tbody>${rows}</tbody>`;
@@ -188,15 +263,16 @@ function renderTables() {
   }));
   $('#tbl-pairs').innerHTML = `<thead><tr><th>Pair</th><th>Bucket (${unit('mass')})</th><th>Raw passes</th><th>Passes</th><th>Load (${unit('mass')})</th><th>% rated</th><th>Heaped body used</th><th>Cycle (s)</th><th>Load time (s)</th><th>Height</th></tr></thead><tbody>${rows}</tbody>`;
 
-  const p = r.prod, bank = state.material.looseTm3 * (1 + state.material.swellPct / 100);
+  const p = r.prod, md = matDerived();
   const rise = r.segs.reduce((s, x) => s + Math.max(0, x.z1 - x.z0), 0), fall = r.segs.reduce((s, x) => s + Math.max(0, x.z0 - x.z1), 0);
   const kv = [
     ['Production (operating)', fmtU('rate', p.tph, 0)], ['Per shift', fmtU('mass', p.shiftT, 0)], ['Per day', fmtU('mass', p.dayT, 0)], ['Per year', fmtU('mass', p.yearT / 1e6, 2).replace(unit('mass'), `M ${unit('mass')}`)],
-    ['Bank volume', `${fmt('vol', p.tph / bank, 0)} B${unit('vol')}/h`], ['Truck capacity (theoretical)', fmtU('rate', p.truckCapTph, 0)], ['Loader capacity (theoretical)', fmtU('rate', p.loaderCapTph, 0)],
+    ['Bank volume dug', `${fmt('vol', p.tph / md.bank, 0)} ${bcU()}/h`], ['Loose volume at dump', `${fmt('vol', p.tph / md.loose, 0)} ${lcU()}/h`], ['Truck capacity (theoretical)', fmtU('rate', p.truckCapTph, 0)], ['Loader capacity (theoretical)', fmtU('rate', p.loaderCapTph, 0)],
     ['Loader efficiency', `${(p.loaderEff * 100).toFixed(0)} %`], ['Truck efficiency', `${(p.truckEff * 100).toFixed(0)} %`], ['One-way haul', fmtU('len', r.totalHaulM, 0)],
     ['Climb / descent (loaded)', `${fmt('len', rise, 0)} / ${fmt('len', fall, 0)} ${unit('len')}`], ['Rolling resistance · traction', `${r.road.rr.toFixed(1)} % · ${r.road.mu.toFixed(2)}`],
   ];
   $('#prod-kv').innerHTML = kv.map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('');
+  const wf = $('#time-wf'); if (wf) wf.innerHTML = waterfallHTML(waterfall());
 }
 
 function chartColors() { return { ink: css('--ink'), muted: css('--muted'), line: css('--line'), accent: css('--accent'), blue: css('--blue'), good: css('--good'), warn: css('--warn'), bad: css('--bad') }; }
@@ -238,7 +314,7 @@ function renderCharts() {
   const k = +sw.value || 0;
   if (r.trucks[k]) {
     const maxN = Math.max(10, Math.ceil(r.trucks[k].n * 2.2), Math.ceil(r.trucksForMF1 * 1.6));
-    const data = sweepTrucks(r, { ...state.ops, jobEff: state.ops.jobEffMin / 60, utilization: state.ops.utilizationPct / 100 }, k, maxN);
+    const data = sweepTrucks(r, lastOps, k, maxN);
     mkChart('chart-sweep', { data: { labels: data.map(d => d.k), datasets: [
       { type: 'bar', label: `Production (${unit('rate')})`, data: data.map(d => toDisp('rate', d.tph)), yAxisID: 'p', backgroundColor: data.map(d => (d.k === r.trucks[k].n ? c.accent : c.line)), borderRadius: 3, order: 2 },
       { type: 'line', label: 'Match factor', data: data.map(d => d.mf), yAxisID: 'm', borderColor: c.ink, pointRadius: 2, borderWidth: 2, order: 1 },
@@ -322,7 +398,7 @@ function wire() {
     const rm = e.target.closest('[data-rm]');
     if (rm) { const [k, i] = rm.dataset.rm.split('.'); state[k].splice(+i, 1); renderRows(); schedule(); }
   });
-  $('#sel-material').addEventListener('change', e => { setMaterial(e.target.value); renderRows(); schedule(); });
+  $('#sel-material').addEventListener('change', e => { setMaterial(e.target.value); renderRows(); renderMaterialFields(); schedule(); });
   $('#add-loader').onclick = () => { state.loaders.push({ ...clone(DEFAULTS.loaders[0]), modelId: 'cat385cl', bucketId: 'hb46' }); renderRows(); schedule(); };
   $('#add-truck').onclick = () => { state.trucks.push({ ...clone(DEFAULTS.trucks[0]), modelId: 'jd460p', count: 2 }); renderRows(); schedule(); };
   $('#profile-sample').onclick = loadSample;
@@ -339,10 +415,22 @@ function wire() {
   $('#btn-export').onclick = exportCSV;
   $('#btn-print').onclick = () => window.print();
   $('#btn-save').onclick = () => download('match-factor-scenario.json', JSON.stringify(state, null, 1), 'application/json');
-  $('#scenario-file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { state = Object.assign(clone(DEFAULTS), JSON.parse(await f.text())); boot(); } catch (err) { alertBox(`Could not open scenario: ${err.message}`); } e.target.value = ''; };
+  $('#scenario-file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { state = migrate(JSON.parse(await f.text())); boot(); } catch (err) { alertBox(`Could not open scenario: ${err.message}`); } e.target.value = ''; };
   $('#btn-reset').onclick = () => { const pts = state.profile.points, nm = state.profile.name; state = clone(DEFAULTS); state.profile.points = pts; state.profile.name = nm; boot(); };
 }
-function setMaterial(id) { state.materialId = id; state.material = { ...pickMat(id), frozen: state.material.frozen }; }
+function setMaterial(id) { state.materialId = id; state.material = { ...pickMat(id), frozen: state.material.frozen }; const s = $('#sel-material'); if (s) s.value = id; renderMaterialFields(); }
+function renderMaterialFields() { const b = $('#bank-field'); if (b) b.hidden = !matDerived().isBlast; }
+function renderSiteDerived() {
+  const c = lastCond, md = matDerived(); if (!c) return;
+  const el = $('#site-derived');
+  if (el) el.innerHTML = `Month average <b>${fmt('temp', c.tempAuto, 0)} ${unit('temp')}</b>${state.site.tempC === '' ? ' (used)' : ''} · daylight ${hToClock(c.sun.sunrise)}–${hToClock(c.sun.sunset)} (${c.sun.dayLenH.toFixed(1)} h) · dark ${(c.darkFrac * 100).toFixed(0)} % of shift time<br>Water truck: <b>${esc(c.water.label)}</b>${c.dust > 0 ? ` · dust ${c.dust >= 0.5 ? 'heavy' : 'light'} (speed cap ${c.capKmh ? fmtU('speed', c.capKmh, 0) : 'none'})` : ''}${c.sky.capKmh ? ` · visibility cap ${fmtU('speed', c.sky.capKmh, 0)}` : ''}`;
+  const wt = $('#water-cb'); if (wt) { wt.disabled = c.water.status === 'no'; }
+  const mEl = $('#material-derived');
+  if (mEl) mEl.innerHTML = `Loose density in the truck <b>${fmt('dens', md.loose, getSystem() === 'si' ? 3 : 0)} ${unit('dens')}</b> (load factor ${md.loadFactor.toFixed(3)})${md.isBlast ? ` · BCM uses solid rock ${fmt('dens', md.bank, getSystem() === 'si' ? 2 : 0)} ${unit('dens')}` : ''}`;
+  const tEl = $('#time-derived');
+  if (tEl) tEl.innerHTML = `Shift ${hToClock(c.shifts[0].start)}–${hToClock(c.shifts[0].end)} = <b>${c.shiftLenH.toFixed(1)} h</b>${c.nShifts > 1 ? ` × ${c.nShifts}` : ''} · operating <b>${c.operatingH.toFixed(2)} h</b> · utilization <b>${(c.utilization * 100).toFixed(1)} %</b> (trucks ${(c.utilization * c.truckUtil * 100).toFixed(1)} %) · condition factor <b>${c.condFactor.toFixed(3)}</b>`;
+  renderMaterialFields();
+}
 async function loadProfileFile(f) {
   const p = parseProfile(await f.text()); state.profile.points = p.points; state.profile.name = `${f.name} (${p.kind}, ${p.points.length} points)`; $('#profile-name').textContent = state.profile.name;
 }
@@ -356,10 +444,20 @@ function boot() {
   $('#profile-name').textContent = state.profile.name || '';
   if (!state.profile.points) loadSample(); else run();
 }
+function setProfile(pts, name) { state.profile.points = pts; if (name) state.profile.name = name; $('#profile-name').textContent = state.profile.name; schedule(); }
+// The editor always shows loading point on the left: if "Reverse direction" was ticked, flip the stored points once.
+function editProfile() {
+  const pr = state.profile;
+  if (pr.reverse && pr.points && pr.points.length > 1) { const L = pr.points.at(-1)[0]; pr.points = pr.points.map(p => [L - p[0], p[1]]).reverse(); pr.reverse = false; renderBound(); }
+  openProfileEditor();
+}
 wire();
+initProfileEditor({ state: () => state, setProfile, schedule });
+$('#profile-edit').onclick = editProfile;
 initVisual({
   state: () => state, getPath: p => getPath(state, p), setPath: (p, v) => setPath(state, p, v), schedule, renderRows, renderBound, normaliseRows, setMaterial,
   newTruck: () => clone(DEFAULTS.trucks[0]), newLoader: () => clone(DEFAULTS.loaders[0]), loadSample, loadProfileFile,
+  cond: () => lastCond, matDerived, waterfall, waterfallHTML, bcU, lcU, setProfile, editProfile,
 });
 boot();
 try { const t = localStorage.getItem('mfc-tab'); if (t) document.querySelector(`.tab[data-tab="${t}"]`)?.click(); } catch (e) { /* ignore */ }

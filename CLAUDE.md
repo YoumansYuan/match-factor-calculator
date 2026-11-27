@@ -17,8 +17,10 @@ mixed fleets and haul-profile CSV upload. Metric/Imperial toggle (state always S
 - `js/engine.js` — pure calculation engine (testable in Node). Key functions: `computeScenario`, `travel`, `steadySpeed`, `matchPair`, `matchFactor`, `production`, `sweepTrucks`, `buildSegments`
 - `js/app.js` — UI binding (`data-bind` paths into `state`, `data-q` = unit quantity), rows, charts, CSV/JSON import-export, localStorage key `mfc-state-v1`
 - `js/visual.js` — friendly Visual mode for non-engineers: **static** SVG scene (user found animation distracting — keep it still): excavator + a line of trucks queued at it in `state.trucks` order (each type's count consecutively). Tap a truck → change that one truck's model (`moveOne`) or settings for its type; × takes one out (`decTruck`); + slot adds one. Road profile strip below (tap → road dialog). Fleet chips, plain-language verdict + "Add/Remove N trucks" button. Uses the same `state`/`data-bind` binding as the Detailed tab (hooks passed from app.js via `initVisual`). Machines are original detailed side-view SVGs (`truckSVG` rigid/ADT, `excavatorSVG` with 'dump'/'low' pose) coloured by brand: CAT yellow, John Deere green, Komatsu white (`brandOf`, CSS `--b-cat/--b-jd/--b-kom`). With 2+ excavators: one on the bench above the dig face loading down, one on the pit floor (staggered, no overlap); line[0] goes under the bench unit.
+- `js/conditions.js` — pure site/time model: date → month temp (`MONTHLY_TEMP_C`), sunrise/sunset (NOAA approx, MST/MDT), dark fraction of shift hours, water-truck rule (>3 °C yes, 0–3 °C daytime only = 0.5, ≤0 °C no), dust, `siteConditions(site, ops)` → operatingH, utilization, truckUtil, jobEff, condFactor, capKmh.
+- `js/profile-editor.js` — in-browser haul-profile editor (`#ped` dialog): drag points, click line to insert, Delete key, coordinate table, grade labels + max-grade warning, trace-over-image background (localStorage `mfc-ped-bg`), simplify (Douglas–Peucker 1 m), flip, CSV download. Opened from Detailed "Draw / edit profile" and the Visual road dialog (`api.editProfile`).
 - `js/units.js` — unit conversions; `js/docs.js` — Equipment Data + Method tabs (method text must match engine)
-- `js/data/equipment.js` — TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, JOB_CONDITIONS, SOURCES
+- `js/data/equipment.js` — TRUCKS, LOADERS, MATERIALS (`digTm3`, `swellPct`, `bankTm3` for blasted; `looseOf()`), ROADS (road type), SURFACES (road surface condition), GRADING, SKY (weather = visibility), MONTHLY_TEMP_C, CONDITIONS, JOB_CONDITIONS, SOURCES
 - `data/sample-profile-evr.csv` — sample haul profile (see below)
 - `tools/bump-version.py` — stamps `?v=<timestamp>` on all CSS/JS references (index.html + every ES import). **Run before every push**, otherwise browsers keep old JS for up to 10 min (Pages cache) and the user sees no change.
 - `tests/engine.test.mjs` — validation; **run `node tests/engine.test.mjs` before every push (must print ALL PASSED)**
@@ -39,8 +41,15 @@ mixed fleets and haul-profile CSV upload. Metric/Imperial toggle (state always S
 - Pass rule default = Burt & Caccetta "add last pass if remainder ≥ ⅓ bucket"; carried load capped by heaped volume.
 - Default travel model = rimpull simulation with acceleration/braking (≤5 m steps); "steady" mode = textbook d/v for checking hand calcs.
 - Haul profile: first point = loading point, last = dump; loaded haul goes first→last, empty returns. Profile resampled to `segmentM` (default 100 m) to remove digitising noise.
-- Profile input for now: user sends Claude an image of an elevation-vs-distance chart → Claude digitises it to CSV (`distance_m,elevation_m`) → user uploads. Also accepts Minesite `x,y,z` polylines. In-browser image digitising is a future feature.
+- Profile input for now: user sends Claude an image of an elevation-vs-distance chart → Claude digitises it to CSV (`distance_m,elevation_m`) → user uploads. Also accepts Minesite `x,y,z` polylines. Since 2026-11-27 the user can also draw/trace it in the built-in profile editor.
 - The sample profile = orange "EVR ElevBasemap ELK" line from the user's chart (Turnbull area), digitised by colour mask + gridline calibration (y = 5285.857 − 2.9179·elev px; 84 px/km; gaps where hidden behind the teal line filled from the teal line). 0–4500 m, 1662–1767 m, accuracy ≈ ±2 m / ±20 m.
+
+## Model decisions made 2026-11-27 (user's 11 feedback items)
+- **Material**: input = density at the dig face (in-situ) + swell dig face → truck; loose = dig/(1+swell); load stops at payload or usable body volume. Blasted rock: dig-face (muck pile) 2.3, swell 0, plus "solid rock density before blast" used ONLY for BCM. Results show BCM/h dug and LCM/h at dump.
+- **Weather split**: SKY (clear/overcast/rain/snowing/fog → speed cap + efficiency) vs road SURFACES (dry/wet/muddy/snow/ice/thaw → RR & traction) vs GRADING (none/once per shift/dedicated) + water truck. Dry road without effective water truck → dust (eff loss + 40 km/h cap when heavy). Sky choice suggests a surface.
+- **Time chain, each loss once**: shift clock times − meetings (nonProdMin) = operating → × availability (from machine condition, overridable) → × utilization (face clean-up + blast clearance [all materials] + loader relocation) and × truckUtil (fuelling) → × job efficiency (55 min/h, small delays only) → × condFactor (sky × dust × darkness). Shown as waterfall ("Where the shift time goes").
+- **No altitude input**: each segment uses its profile elevation; loader uses loading-point elevation.
+- Old saved states are converted by `migrate()` in app.js (looseTm3→digTm3, weatherId→surfaceId, drop altitudeM/shiftH/utilizationPct, jobEff 50→55).
 
 ## Course material (on the user's external drive)
 User's computer must be linked to the session and the folder granted (`E:\school`). Root:
@@ -65,6 +74,6 @@ Tip: stage PDFs into the container and use `pdftotext -layout`; chart pages are 
 ## Backlog / ideas the user mentioned or agreed to
 1. Compare results against the user's own Turnbull till-hauling Excel (not yet received) and align inputs/outputs.
 2. Add Komatsu trucks/excavators (Komatsu handbook is on the drive).
-3. In-browser image digitising of elevation profiles (calibrate axes, pick line colour).
+3. ~~In-browser profile drawing~~ done (editor with trace-over-image). Still possible: automatic colour-mask digitising of a chart image.
 4. Cost per tonne (MCS cost data from MIME 426 capstone is on the drive: `00 Capstone MIME-426…\01 MCS 成本资料…`).
 5. Optional: more ADTs (CAT 740 GC / 745 variants, Volvo, Bell), wheel loaders (CAT 992/994).

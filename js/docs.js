@@ -1,5 +1,5 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, WEATHER, CONDITIONS, ROAD_SRC, SOURCES } from './data/equipment.js?v=202611270515';
-import { unit, fmt, fmtU, toDisp } from './units.js?v=202611270515';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, GRADING, SKY, VIS_SRC, MONTHLY_TEMP_C, CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611271723';
+import { unit, fmt, fmtU, toDisp } from './units.js?v=202611271723';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const est = '<span class="badge est">estimate</span>';
@@ -42,9 +42,13 @@ export function renderEquipment(el) {
     ])}<ul class="note">${srcList(l.src)}${typeof e.loadHeight === 'string' ? `<li>${est} ${esc(e.loadHeight)}</li>` : ''}${typeof e.cycle === 'string' ? `<li>${est} ${esc(e.cycle)}</li>` : ''}</ul></div>
     <div><table class="tbl"><thead><tr><th>Bucket</th><th>Heaped (${unit('vol')})</th><th>Max loading height (${unit('len')})</th></tr></thead><tbody>${l.buckets.map(b => `<tr><td>${esc(b.label)}</td><td>${fmt('vol', b.m3, 1)}</td><td>${fmt('len', b.loadHeightM, 2)}${e.loadHeight ? ' ' + est : ''}</td></tr>`).join('')}</tbody></table></div></div></div>`;
   });
-  h += `<h3>Materials</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Material</th><th>Loose density (${unit('dens')})</th><th>Swell</th><th>Bank density (${unit('dens')})</th><th>Fill factor</th><th style="text-align:left">Source</th></tr></thead><tbody>${MATERIALS.map(m => `<tr><td>${esc(m.name)}</td><td>${fmt('dens', m.looseTm3, unit('dens') === 't/m³' ? 2 : 0)}</td><td>${m.swellPct} %</td><td>${fmt('dens', m.looseTm3 * (1 + m.swellPct / 100), unit('dens') === 't/m³' ? 2 : 0)}</td><td>${m.fill}</td><td style="text-align:left;white-space:normal">${esc(m.src)}</td></tr>`).join('')}</tbody></table></div>`;
-  h += `<h3>Road surfaces</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Surface</th><th>Rolling resistance</th><th>Traction (rubber tyres)</th></tr></thead><tbody>${ROADS.map(r => `<tr><td>${esc(r.name)}</td><td>${r.rr} %</td><td>${r.traction}</td></tr>`).join('')}</tbody></table><p class="note">${esc(ROAD_SRC)}</p></div>`;
-  h += `<h3>Weather &amp; surface state</h3><div class="equip-card"><table class="tbl"><thead><tr><th>State</th><th>RR added</th><th>RR minimum</th><th>Traction ×</th><th>Traction cap</th><th style="text-align:left">Basis</th></tr></thead><tbody>${WEATHER.map(w => `<tr><td>${esc(w.name)}</td><td>${w.rrAdd} %</td><td>${w.rrMin} %</td><td>${w.tractionMult}</td><td>${w.tractionMax}</td><td style="text-align:left;white-space:normal">${esc(w.note)}</td></tr>`).join('')}</tbody></table></div>`;
+  const dd = unit('dens') === 't/m³' ? 2 : 0;
+  h += `<h3>Materials</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Material</th><th>Density at dig face (${unit('dens')})</th><th>Swell dig face → truck</th><th>Loose density in truck (${unit('dens')})</th><th>Bank density for BCM (${unit('dens')})</th><th>Fill factor</th><th style="text-align:left">Source</th></tr></thead><tbody>${MATERIALS.map(m => `<tr><td>${esc(m.name)}</td><td>${fmt('dens', m.digTm3, dd)}</td><td>${m.swellPct} %</td><td>${fmt('dens', looseOf(m), dd)}</td><td>${fmt('dens', m.blasted ? m.bankTm3 : m.digTm3, dd)}${m.blasted ? ' <small>(solid, pre-blast)</small>' : ''}</td><td>${m.fill}</td><td style="text-align:left;white-space:normal">${esc(m.src)}</td></tr>`).join('')}</tbody></table><p class="note">${est} Typical values — replace with your own in-situ density and swell tests.</p></div>`;
+  h += `<h3>Road types</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Road type</th><th>Rolling resistance</th><th>Traction (rubber tyres)</th></tr></thead><tbody>${ROADS.map(r => `<tr><td>${esc(r.name)}</td><td>${r.rr} %</td><td>${r.traction}</td></tr>`).join('')}</tbody></table><p class="note">${esc(ROAD_SRC)}</p></div>`;
+  h += `<h3>Road surface condition</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Surface</th><th>RR added</th><th>RR minimum</th><th>Traction ×</th><th>Traction cap</th><th style="text-align:left">Basis</th></tr></thead><tbody>${SURFACES.map(w => `<tr><td>${esc(w.name)}</td><td>${w.rrAdd} %</td><td>${w.rrMin} %</td><td>${w.tractionMult}</td><td>${w.tractionMax}</td><td style="text-align:left;white-space:normal">${esc(w.note)}</td></tr>`).join('')}</tbody></table></div>`;
+  h += `<h3>Grader maintenance</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Grading</th><th>Share of surface penalty left</th><th>Extra RR</th><th style="text-align:left">Basis</th></tr></thead><tbody>${GRADING.map(g => `<tr><td>${esc(g.name)}</td><td>${(g.keep * 100).toFixed(0)} %</td><td>+${g.rrExtra} %</td><td style="text-align:left;white-space:normal">${esc(g.note)}</td></tr>`).join('')}</tbody></table><p class="note">${est} Planning estimates.</p></div>`;
+  h += `<h3>Weather (visibility)</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Weather</th><th>Speed cap</th><th>Efficiency factor</th><th>Suggested road surface</th><th style="text-align:left">Note</th></tr></thead><tbody>${SKY.map(w => `<tr><td>${esc(w.name)}</td><td>${w.capKmh ? fmtU('speed', w.capKmh, 0) : '—'}</td><td>${w.eff}</td><td>${esc(SURFACES.find(x => x.id === w.surface)?.name || 'unchanged')}</td><td style="text-align:left;white-space:normal">${esc(w.note)}</td></tr>`).join('')}</tbody></table><p class="note">${est} ${esc(VIS_SRC)}</p></div>`;
+  h += `<h3>Monthly mean air temperature (default)</h3><div class="equip-card"><table class="tbl"><thead><tr>${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => `<th>${m}</th>`).join('')}</tr></thead><tbody><tr>${MONTHLY_TEMP_C.map(t => `<td>${fmt('temp', t, 0)}</td>`).join('')}</tr></tbody></table><p class="note">${est} Approximate Elk Valley (Sparwood, BC) climate normals in ${unit('temp')}; used only when no temperature is typed.</p></div>`;
   h += `<h3>Machine condition (age &amp; reliability)</h3><div class="equip-card"><table class="tbl"><thead><tr><th>Condition</th><th>Mechanical availability</th><th>Engine power factor</th><th>Loader cycle multiplier</th></tr></thead><tbody>${CONDITIONS.map(c => `<tr><td>${c.name}</td><td>${(c.availability * 100).toFixed(0)} %</td><td>${c.powerFactor}</td><td>${c.cycleMult}</td></tr>`).join('')}</tbody></table><p class="note">${est} Planning presets — replace with your fleet's maintenance records (availability) where available. The power factor scales rimpull (slower climbing for worn engines/drivetrains).</p></div>`;
   h += `<h3>References</h3><ul>${Object.values(SOURCES).map(s => `<li>${esc(s)}</li>`).join('')}</ul>`;
   el.innerHTML = h;
@@ -66,7 +70,12 @@ export function renderMethod(el) {
 <p class="lead">The calculator follows the equipment-selection procedure taught in McGill MIME 333 (Materials Handling, Ch.3 Loading &amp; Haulage Equipment) and the estimating methods in the Caterpillar and Komatsu performance handbooks. Mixed fleets use the corrected heterogeneous match factor of Burt &amp; Caccetta.</p>
 
 <h3>1. Material, bucket payload and passes</h3>
-<div class="eq">bucket payload (t) = heaped bucket (m³) × fill factor × loose density (t/m³)
+<div class="eq">loose density in the truck = density at the dig face / (1 + swell dig face → truck)
+   soil, till, overburden, coal: dig-face density = in-situ (bank) density, swell e.g. 20–35 %
+   blasted rock: dig-face density = muck-pile density (already swelled by the blast), swell ≈ 0 %
+bank volume (BCM) = tonnes / bank density     bank density = in-situ density, or solid rock density before blast
+loose volume at dump (LCM) = tonnes / loose density
+bucket payload (t) = heaped bucket (m³) × fill factor × loose density (t/m³)
 passes by weight  nW = rated truck payload / bucket payload
 usable body (m³) = heaped body SAE 2:1 (m³) × body fill factor   (default 100 %)
 passes by volume  nV = usable body (m³) / (heaped bucket × fill factor)
@@ -80,14 +89,17 @@ truck loading time = passes × tc                        (MIME 333, Burt &amp; C
                 or (passes − 1) × tc + first-pass time   (Komatsu Handbook 15A-14)</div>
 
 <h3>3. Haul and return travel</h3>
-<div class="eq">rolling resistance RR (%) — road surface table, modified by weather
+<div class="eq">rolling resistance RR (%) = road type RR + surface penalty × share left after grading + grading extra RR
+   (snow/ice set a minimum RR instead of an addition)
+traction μ = road type μ − (road type μ − surface μ) × share left after grading
 grade resistance GR (%) = grade, + uphill / − downhill in the direction of travel
 total resistance TR = RR + GR        required rimpull = GMW × g × TR
 usable rimpull = traction coefficient × weight on driving wheels   (wheel slip if required &gt; usable)
-available rimpull(v) = OEM rimpull envelope(v) × altitude power fraction × machine power factor
+available rimpull(v) = OEM rimpull envelope(v) × altitude power fraction(segment elevation) × machine power factor
+speed caps: speed limits, downhill limit, visibility cap (fog / snow / rain, heavy dust)
 downhill (TR &lt; 0): maximum speed from the continuous-retarding curve for effective grade GR − RR</div>
 <p><b>Rimpull simulation</b> (default): the road is cut into ≤ 5 m steps; the truck starts from rest at the loader, accelerates with a = (rimpull − resistance) / (GMW × rotating-mass factor), is capped by top speed, speed limits and retarder speed, and brakes (constant deceleration) to stop at the dump. This is the integrated form of the formula-sheet expression t = d/v + v/2a₁ + v/2a₂ and it naturally applies the Komatsu "speed factors" for short sections. <b>Steady speed</b> reproduces the textbook chart-reading method (time = distance / speed, no acceleration) for checking against assignments.</p>
-<p>Altitude derating follows MIME 333 §3.7.6: rimpull is divided by the fraction of flywheel power available at the site altitude (CAT altitude deration table). CAT retarder curves are rated at sea level and 32 °C; above 32 °C the retarding capacity is reduced by the "retarder derate per °C" assumption (heat rejection falls with ambient temperature — Tannant &amp; Regensburg 2001).</p>
+<p>Altitude derating follows MIME 333 §3.7.6: rimpull is multiplied by the fraction of flywheel power available at altitude (CAT altitude deration table). There is no fixed altitude input: each road segment uses its own elevation from the haul profile, and the excavator uses the elevation of the loading point. CAT retarder curves are rated at sea level and 32 °C; above 32 °C the retarding capacity is reduced by the "retarder derate per °C" assumption (heat rejection falls with ambient temperature — Tannant &amp; Regensburg 2001).</p>
 
 <h3>4. Cycle time</h3>
 <div class="eq">truck cycle = spot/exchange + loading + haul (loaded) + maneuver &amp; dump + return (empty)
@@ -102,27 +114,39 @@ heterogeneous (Burt &amp; Caccetta 2008 corrigendum, eq. 16):
    MF   = number of trucks / [ Σ_j (loaders_j / lt_j) × Σ_i (trucks_i × truck cycle time_i) ]</div>
 <p>MF &lt; 1: under-trucked, loaders wait (loader efficiency ≈ MF). MF &gt; 1: over-trucked, trucks queue (truck efficiency ≈ 1/MF). Mining fleets are often run slightly under 1 for minimum cost; construction aims at 1. The calculated MF is optimistic because it ignores truck bunching — use the bunching factor to discount truck output. Note: the original 2007 paper's §4 formula was corrected by the authors in 2008; this tool uses the corrected form.</p>
 
-<h3>6. Production, availability and fleet size</h3>
-<div class="eq">truck capacity  = Σ trucks_i × availability_i × load_i / cycle_i × bunching
-loader capacity = Σ_j (loaders_j × availability_j / lt_j) × Σ_i trucks_i × availability_i × load_i
-production      = min(truck capacity, loader capacity) × job efficiency (min/h ÷ 60) × utilization
-trucks for MF = 1 ≈ trucks / MF;   trucks to deploy = that / mean availability   (MIME 333: required fleet = theoretical / availability)</div>
+<h3>6. Time model, production and fleet size</h3>
+<p>Every loss is applied exactly once, in this order (shown as the "Where the shift time goes" chart):</p>
+<div class="eq">scheduled shift  = shift end − shift start                      (e.g. 07:00–19:00 = 12 h)
+operating time   = scheduled − meetings / planning / shift change  (e.g. 12 h − 60 min = 11 h)
+× availability   = from machine condition (worse condition → more breakdowns), or typed per machine
+× utilization    = 1 − (face clean-up + blast clearance + excavator relocation) / operating time   (stops the excavator)
+× truck util.    = 1 − truck fuelling / operating time                                           (stops that truck only)
+× job efficiency = productive min per hour / 60   (small operational delays only; 55 min/h typical)
+× condition      = weather visibility factor × (1 − dust loss × dust level) × (1 − darkness loss × dark fraction)
 
+truck capacity  = Σ trucks_i × availability_i × load_i / cycle_i × bunching × truck util.
+loader capacity = Σ_j (loaders_j × availability_j / lt_j) × Σ_i trucks_i × availability_i × load_i
+production (t/operating h) = min(truck capacity, loader capacity) × job efficiency × utilization × condition
+per shift = production × operating time;  per year = × shifts per day × days per year
+trucks for MF = 1 ≈ trucks / MF;   trucks to deploy = that / mean availability   (MIME 333: required fleet = theoretical / availability)</div>
+<p><b>Date and location.</b> The work date sets a default air temperature (approximate monthly mean, editable) and the sunrise/sunset times at the site latitude/longitude (NOAA approximation, Mountain Time with daylight saving). The dark fraction is the share of all shift hours outside daylight. <b>Water truck rule:</b> mean temperature &gt; 3 °C — available; 0–3 °C — daytime only (half effect, night frost risk); ≤ 0 °C — not available (water freezes on the road). A dry road with no effective water truck raises dust: heavy dust reduces efficiency and caps haul speed; frozen ground raises about half as much dust. Rain or snow removes dust.</p>
 <h3>7. Fuel and CO₂</h3>
 <div class="eq">fuel (L/h) = P × β × ρ / γ      β = 0.268 kg/kW·h, γ = 0.85 kg/L      (MIME 333 formula sheet)
 ρ (load factor) while hauling = wheel power / (drivetrain efficiency × available net power), from the simulation
 ρ while idling / spotting / dumping / retarding = idle load factor;   excavators: ρ from the equipment table
 CO₂ = fuel × Cc × OF × 44/12 = fuel × 733 g/L × 0.99 × 44/12 = 2.66 kg / L</div>
 
-<h3>8. Weather, temperature and machine condition</h3>
+<h3>8. Weather, road surface and machine condition</h3>
 <ul>
-<li><b>Weather</b> adds rolling resistance and caps traction (snow, ice, spring thaw, wet). Snow and ice values: CAT traction table; Tannant &amp; Regensburg (2001) — packed snow 0.20–0.55, loose snow 0.10–0.25, smooth ice 0.10–0.25, wet ice 0.05–0.10; loose snow RR 4.5 %, packed snow 2.5 %.</li>
-<li><b>Temperature</b> affects retarder capacity above 32 °C. Below 0 °C consider ticking "frozen material".</li>
+<li><b>Weather</b> (clear, overcast, rain, snowing, fog) only affects visibility: a speed cap on the haul and an efficiency factor. Choosing a weather suggests a road surface (rain → wet, snowing → loose snow) which you can change.</li>
+<li><b>Road surface condition</b> (dry, wet, muddy, packed snow, loose snow, ice, spring thaw) changes rolling resistance and traction. Snow and ice values: CAT traction table; Tannant &amp; Regensburg (2001) — packed snow 0.20–0.55, loose snow 0.10–0.25, smooth ice 0.10–0.25, wet ice 0.05–0.10; loose snow RR 4.5 %, packed snow 2.5 %.</li>
+<li><b>Grader maintenance</b> removes part of the snow/mud penalty; with no grader, ruts and spillage add RR.</li>
+<li><b>Temperature</b> affects retarder capacity above 32 °C and the water-truck rule. Below 0 °C consider ticking "frozen material".</li>
 <li><b>Machine condition</b> (New / Good / Average / Worn) sets mechanical availability, an engine power factor and a loader cycle multiplier. These are planning estimates; override availability with site data.</li>
 </ul>
 
 <h3>9. Haul profile input</h3>
-<p>Upload a CSV of <code>distance, elevation</code> or a Minesite/Vulcan/Deswik polyline as <code>x, y, z</code> (along-road distance is computed from the x-y path). Points are resampled into equal segments of the chosen length (default 100 m) to remove digitising noise before grades are calculated. The bundled sample is the "EVR ElevBasemap ELK" line digitised from a supplied elevation-profile image (4.5 km, 1 662–1 767 m; accuracy ≈ ±2 m elevation, ±20 m distance).</p>
+<p>Draw the profile in the built-in editor (drag points, click the line to add a point, type exact values in the table, optionally trace over a screenshot of your elevation chart), or upload a CSV of <code>distance, elevation</code> or a Minesite/Vulcan/Deswik polyline as <code>x, y, z</code> (along-road distance is computed from the x-y path). Points are resampled into equal segments of the chosen length (default 100 m) to remove digitising noise before grades are calculated. The bundled sample is the "EVR ElevBasemap ELK" line digitised from a supplied elevation-profile image (4.5 km, 1 662–1 767 m; accuracy ≈ ±2 m elevation, ±20 m distance).</p>
 
 <h3>10. Validation</h3>
 <ul>

@@ -1,7 +1,9 @@
 // Run: node tests/engine.test.mjs
 import { readFileSync } from 'node:fs';
 import { matchFactor, passCount, steadySpeed, computeScenario, buildSegments, interp, matchPair } from '../js/engine.js';
-import { TRUCKS, LOADERS } from '../js/data/equipment.js';
+import { TRUCKS, LOADERS, MATERIALS, looseOf } from '../js/data/equipment.js';
+import { solar, darkHours, waterTruckStatus, siteConditions, clockToH } from '../js/conditions.js';
+import { resolveRoad } from '../js/engine.js';
 
 let fails = 0;
 const near = (name, got, exp, tol) => {
@@ -81,6 +83,40 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
   near('body fill 1.0 → passes by volume nV', full.nV, 26.0 / (4.6 * 0.9), 0.01);
   near('body fill 0.85 → passes by volume nV', cut.nV, 26.0 * 0.85 / (4.6 * 0.9), 0.01);
   if (!(cut.loadT <= 26.0 * 0.85 * 1.8 + 1e-9)) { fails++; console.log('FAIL  body fill should cap carried load'); } else console.log('PASS  body fill 0.85 caps carried load at usable volume');
+}
+
+// Site conditions & time model
+{
+  // Sparwood-area latitude: summer solstice ≈ 16.1 h of daylight, winter solstice ≈ 8.2 h
+  near('daylight 21 Jun @ 49.7°N', solar('2026-06-21', 49.7, -114.9).dayLenH, 16.1, 0.25);
+  near('daylight 21 Dec @ 49.7°N', solar('2026-12-21', 49.7, -114.9).dayLenH, 8.2, 0.25);
+  const s = solar('2026-06-21', 49.7, -114.9); // MDT: sunrise ≈ 05:30, sunset ≈ 21:40
+  near('sunrise 21 Jun (MDT clock h)', s.sunrise, 5.5, 0.25);
+  near('dark hours in 19:00–07:00 night shift, 21 Jun', darkHours(19, 12, s.sunrise, s.sunset), 24 - s.dayLenH, 0.05);
+  near('water truck 10 °C', waterTruckStatus(10).eff, 1, 0); near('water truck 2 °C', waterTruckStatus(2).eff, 0.5, 0); near('water truck -1 °C', waterTruckStatus(-1).eff, 0, 0);
+  near('clock 19:30', clockToH('19:30'), 19.5, 0);
+  const c = siteConditions({ date: '2026-07-15', skyId: 'clear', surfaceId: 'dry', waterTruck: true },
+    { shiftStart: '07:00', shiftEnd: '19:00', shiftsPerDay: 2, nonProdMin: 60, jobEffMin: 55, standby: { faceMin: 20, blastMin: 15, relocMin: 10, fuelMin: 15 } });
+  near('shift 07–19 length', c.shiftLenH, 12, 0); near('operating time 12 h − 60 min', c.operatingH, 11, 1e-9);
+  near('utilization = 1 − 45 min / 660 min', c.utilization, 1 - 45 / 660, 1e-9);
+  near('truck util = 1 − 15 / 660', c.truckUtil, 1 - 15 / 660, 1e-9);
+  near('July with water truck: no dust', c.dust, 0, 0);
+  const w = siteConditions({ date: '2026-01-15', skyId: 'clear', surfaceId: 'dry', waterTruck: true }, { shiftStart: '07:00', shiftEnd: '19:00' });
+  near('January: water truck unavailable → frozen-ground dust 0.5', w.dust, 0.5, 0);
+  const f = siteConditions({ date: '2026-07-15', skyId: 'fog', surfaceId: 'wet' }, { shiftStart: '07:00', shiftEnd: '19:00' });
+  near('fog visibility cap km/h', f.capKmh, 25, 0);
+}
+// Materials: loose = dig-face / (1 + swell); blasted rock keeps 2.30 into the truck
+{
+  near('till loose density 2.20/1.22', looseOf(MATERIALS.find(m => m.id === 'till')), 2.2 / 1.22, 1e-9);
+  near('blasted rock loose density', looseOf(MATERIALS.find(m => m.id === 'blasted')), 2.3, 1e-9);
+}
+// Grader maintenance on loose snow (firm road RR 2 → min 4.5 %): dedicated grader keeps 40 % of the penalty
+{
+  const none = resolveRoad({ roadId: 'firm', surfaceId: 'loosesnow', gradingId: 'none' });
+  const ded = resolveRoad({ roadId: 'firm', surfaceId: 'loosesnow', gradingId: 'dedicated' });
+  if (!(ded.rr < none.rr && ded.mu > none.mu)) { fails++; console.log(`FAIL  grader should lower RR and raise traction (none ${none.rr}/${none.mu}, dedicated ${ded.rr}/${ded.mu})`); }
+  else console.log(`PASS  grader: no grader RR ${none.rr.toFixed(2)} % μ ${none.mu.toFixed(2)} → dedicated RR ${ded.rr.toFixed(2)} % μ ${ded.mu.toFixed(2)}`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');

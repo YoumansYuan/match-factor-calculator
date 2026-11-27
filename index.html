@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611270515">
+  <link rel="stylesheet" href="css/styles.css?v=202611271723">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -52,23 +52,59 @@
   <div id="pop-body" class="pop-body"></div>
 </dialog>
 
+<dialog id="ped" class="pop ped-dlg" aria-labelledby="ped-title">
+  <div class="pop-head"><h3 id="ped-title">Haul road profile — draw or edit</h3><button id="ped-close" class="x" aria-label="Close">×</button></div>
+  <div class="ped">
+    <div class="ped-main">
+      <div class="ped-bar">
+        <label>Distance max <span id="ped-unit-x" class="u" data-u="len"></span><input type="number" id="ped-xMax" step="100" min="10"></label>
+        <label>Elevation min<input type="number" id="ped-yMin" step="10"></label>
+        <label>Elevation max<input type="number" id="ped-yMax" step="10"></label>
+        <label>Warn above grade %<input type="number" id="ped-maxg" step="0.5" min="1"></label>
+      </div>
+      <svg id="ped-svg" viewBox="0 0 820 420" role="application" aria-label="Elevation profile editor: drag points, click the line to add a point"></svg>
+      <p class="note ped-help">Left end = <b>loading point</b>, right end = <b>dump</b>. Drag a point up/down (or sideways) · click the line to add a point · select a point and press <kbd>Delete</kbd> to remove it · leave axis boxes empty for auto range. Grades steeper than the warning limit are shown in red.</p>
+      <div class="ped-bar">
+        <button class="btn" id="ped-add">+ Extend road (add point at end)</button>
+        <button class="btn ghost" id="ped-simplify" hidden>Simplify (fewer points)</button>
+        <button class="btn ghost" id="ped-flip">Flip direction</button>
+        <button class="btn ghost" id="ped-new">Start new (flat 2 points)</button>
+        <label class="btn ghost file">Trace over image…<input type="file" id="ped-bg" accept="image/*"></label>
+        <span id="ped-bg-ctl" class="ped-bgctl" hidden>Image opacity <input type="range" id="ped-bg-op" min="10" max="100" value="45"> <button class="link" id="ped-bg-rm">remove image</button></span>
+      </div>
+      <p class="muted" id="ped-stats"></p>
+    </div>
+    <div class="ped-side">
+      <div class="ped-tbl"><table class="tbl"><thead><tr><th>Point</th><th>Distance <span id="ped-unit-d"></span></th><th>Elevation <span id="ped-unit-z"></span></th><th>Grade to next</th><th></th></tr></thead><tbody id="ped-rows"></tbody></table></div>
+      <div class="ped-actions"><button class="btn ghost" id="ped-csv">Download CSV</button><button class="btn primary" id="ped-done">Done</button></div>
+    </div>
+  </div>
+</dialog>
+
 <section id="tab-calc" class="tabpanel">
   <div class="layout">
     <div class="inputs">
 
       <details class="card" open>
-        <summary><span class="num">1</span> Site &amp; Haul Road</summary>
+        <summary><span class="num">1</span> Site, Weather &amp; Haul Road</summary>
         <div class="grid g3">
-          <label>Altitude <span class="u" data-u="len"></span><input type="number" data-bind="site.altitudeM" data-q="len" step="10"></label>
-          <label>Ambient temperature <span class="u" data-u="temp"></span><input type="number" data-bind="site.tempC" data-q="temp" step="1"></label>
-          <label>Weather / surface state<select data-bind="site.weatherId" id="sel-weather"></select></label>
-          <label class="span3">Road surface<select data-bind="site.roadId" id="sel-road"></select></label>
+          <label>Work date<input type="date" data-bind="site.date"></label>
+          <label>Site latitude <span class="u">°N</span><input type="number" data-bind="site.latitude" step="0.1"></label>
+          <label>Site longitude <span class="u">°E</span><input type="number" data-bind="site.longitude" step="0.1"></label>
+          <label>Air temperature <span class="u" data-u="temp"></span><input type="number" data-bind="site.tempC" data-q="temp" step="1" placeholder="month average"></label>
+          <label>Weather (sky &amp; visibility)<select data-bind="site.skyId" id="sel-sky"></select></label>
+          <label>Road surface condition<select data-bind="site.surfaceId" id="sel-surface"></select></label>
+          <label class="span2">Road type (base rolling resistance)<select data-bind="site.roadId" id="sel-road"></select></label>
+          <label>Grader maintenance<select data-bind="site.gradingId" id="sel-grading"></select></label>
+          <label class="check"><input type="checkbox" data-bind="site.waterTruck" id="water-cb"> Water truck for dust control</label>
+          <div class="resolved span2" id="site-derived"></div>
           <label>Rolling resistance override <span class="u">%</span><input type="number" data-bind="site.rrOverride" step="0.1" placeholder="auto"></label>
           <label>Traction coefficient override<input type="number" data-bind="site.tractionOverride" step="0.01" placeholder="auto"></label>
           <div class="resolved" id="road-resolved"></div>
           <label>Speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.speedLimitKmh" data-q="speed" step="1"></label>
           <label>Downhill speed limit <span class="u" data-u="speed"></span><input type="number" data-bind="site.downhillLimitKmh" data-q="speed" step="1"></label>
           <label>Downhill limit applies below grade <span class="u">%</span><input type="number" data-bind="site.downhillGradePct" step="0.5"></label>
+          <p class="note span3">Elevation for engine altitude deration comes from the haul profile (each segment uses its own elevation; the excavator uses the loading point).</p>
         </div>
       </details>
 
@@ -76,9 +112,11 @@
         <summary><span class="num">2</span> Material</summary>
         <div class="grid g4">
           <label class="span2">Material<select id="sel-material"></select></label>
-          <label>Loose density <span class="u" data-u="dens"></span><input type="number" data-bind="material.looseTm3" data-q="dens" step="0.01"></label>
+          <label>Density at the dig face <span class="u" data-u="dens"></span><input type="number" data-bind="material.digTm3" data-q="dens" step="0.01"></label>
+          <label>Swell, dig face → truck <span class="u">%</span><input type="number" data-bind="material.swellPct" step="1"></label>
+          <label id="bank-field" hidden>Solid rock density before blast <span class="u" data-u="dens"></span><input type="number" data-bind="material.bankTm3" data-q="dens" step="0.01"></label>
           <label>Bucket fill factor<input type="number" data-bind="material.fill" step="0.01" min="0.3" max="1.3"></label>
-          <label>Swell <span class="u">%</span><input type="number" data-bind="material.swellPct" step="1"></label>
+          <div class="resolved span2" id="material-derived"></div>
           <label class="check span3"><input type="checkbox" data-bind="material.frozen"> Frozen / cemented material <small>(fill factor × <span data-show="ops.frozenFillMult"></span>, dig cycle × <span data-show="ops.frozenCycleMult"></span>)</small></label>
           <p class="note span4" id="material-note"></p>
         </div>
@@ -100,6 +138,7 @@
         <summary><span class="num">5</span> Haul Profile</summary>
         <div class="profile-src">
           <label class="btn file">Upload CSV<input type="file" id="profile-file" accept=".csv,.txt"></label>
+          <button class="btn" id="profile-edit">Draw / edit profile</button>
           <button class="btn ghost" id="profile-sample">Load sample (EVR ElevBasemap profile)</button>
           <span class="muted" id="profile-name"></span>
         </div>
@@ -117,11 +156,18 @@
       <details class="card">
         <summary><span class="num">6</span> Operations &amp; Method</summary>
         <div class="grid g4">
-          <label>Shift length <span class="u">h</span><input type="number" data-bind="ops.shiftH" step="0.5"></label>
-          <label>Shifts per day<input type="number" data-bind="ops.shiftsPerDay" step="1"></label>
+          <label>Shift starts<input type="time" data-bind="ops.shiftStart"></label>
+          <label>Shift ends<input type="time" data-bind="ops.shiftEnd"></label>
+          <label>Shifts per day<input type="number" data-bind="ops.shiftsPerDay" step="1" min="1" max="3"></label>
           <label>Operating days / year<input type="number" data-bind="ops.daysPerYear" step="1"></label>
+          <label>Meetings, planning, shift change <span class="u">min/shift</span><input type="number" data-bind="ops.nonProdMin" step="5"></label>
+          <label>Face clean-up / dozer support <span class="u">min/shift</span><input type="number" data-bind="ops.standby.faceMin" step="5"></label>
+          <label>Blast clearance <span class="u">min/shift</span><input type="number" data-bind="ops.standby.blastMin" step="5"></label>
+          <label>Loader relocation <span class="u">min/shift</span><input type="number" data-bind="ops.standby.relocMin" step="5"></label>
+          <label>Truck fuelling / service <span class="u">min/shift each</span><input type="number" data-bind="ops.standby.fuelMin" step="5"></label>
           <label>Job efficiency <span class="u">min/h</span><input type="number" data-bind="ops.jobEffMin" step="1" max="60"></label>
-          <label>Utilization <span class="u">%</span><input type="number" data-bind="ops.utilizationPct" step="1"></label>
+          <div class="resolved span2" id="time-derived"></div>
+          <p class="note span4">Each loss is counted once: meetings come off the shift; availability (machine condition) covers breakdowns; standby covers the listed waits; job efficiency covers only small operational delays; weather, dust and darkness are a separate condition factor.</p>
           <label>Bunching factor<input type="number" data-bind="ops.bunching" step="0.01" min="0.5" max="1"></label>
           <label class="span2">Pass rounding<select data-bind="ops.passRule">
             <option value="third">Add last pass if ≥ ⅓ bucket (Burt &amp; Caccetta)</option>
@@ -148,6 +194,9 @@
             <label>Retarder derate above 32 °C <span class="u">/°C</span><input type="number" data-bind="ops.hotRetarderDeratePerC" step="0.005"></label>
             <label>First-pass fraction (Komatsu)<input type="number" data-bind="ops.firstPassFrac" step="0.05"></label>
             <label>Frozen fill-factor multiplier<input type="number" data-bind="ops.frozenFillMult" step="0.01"></label>
+            <label>Efficiency loss in heavy dust <span class="u">fraction</span><input type="number" data-bind="ops.assumptions.dustEffLoss" step="0.01"></label>
+            <label>Speed cap in heavy dust <span class="u">km/h</span><input type="number" data-bind="ops.assumptions.dustCapKmh" step="1"></label>
+            <label>Efficiency loss in darkness <span class="u">fraction</span><input type="number" data-bind="ops.assumptions.darkEffLoss" step="0.01"></label>
             <label>Frozen cycle multiplier<input type="number" data-bind="ops.frozenCycleMult" step="0.01"></label>
           </div>
         </details>
@@ -200,6 +249,8 @@
       <div class="card flat">
         <h3>Production</h3>
         <div class="kv" id="prod-kv"></div>
+        <h3 class="wf-h">Where the shift time goes</h3>
+        <div id="time-wf"></div>
       </div>
     </aside>
   </div>
@@ -224,6 +275,6 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611270515"></script>
+<script type="module" src="js/app.js?v=202611271723"></script>
 </body>
 </html>

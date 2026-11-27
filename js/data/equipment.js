@@ -180,14 +180,17 @@ export const LOADERS = [
   },
 ];
 
-// Materials — loose density is what loads the truck; bank density is used only for BCM reporting.
+// Materials — entered as density at the dig face + swell from dig face to truck.
+// loose (in-truck) density = dig-face density / (1 + swell). For blasted rock the muck pile has already swollen,
+// so dig-face density = loose density and swell = 0; bank (pre-blast) density is entered separately for BCM.
 export const MATERIALS = [
-  { id: 'blasted', name: 'Blasted Rock', looseTm3: 2.30, swellPct: 30, fill: 0.85, src: 'Loose density per user (2.3 t/m³). Fill factor: average blasted rock 75–90 % (CAT47 p.30-2 / MIME 333 Table 3.3).' },
-  { id: 'overburden', name: 'Overburden', looseTm3: 1.72, swellPct: 33, fill: 0.90, src: 'CAT47 p.30-6 "Decomposed rock 50 % rock / 50 % earth": loose 1 720, bank 2 280 kg/m³.' },
-  { id: 'soil', name: 'Soil', looseTm3: 1.60, swellPct: 26, fill: 1.00, src: 'CAT47 p.30-6 "Earth — wet excavated": loose 1 600, bank 2 020 kg/m³. Fill: moist loam 100–110 %.' },
-  { id: 'till', name: 'Till (glacial)', looseTm3: 1.80, swellPct: 22, fill: 0.90, src: 'Typical glacial till bank ≈ 2.2 t/m³ (estimate — not in CAT table; nearest "Clay & gravel" 1.54–1.84). Fill: "Soil, boulders, roots" 80–100 %. Verify with site tests.' },
-  { id: 'coal', name: 'Coal', looseTm3: 1.30, swellPct: 35, fill: 0.95, src: 'Loose density per user (1.3 t/m³). Swell from CAT47 bituminous load factor 0.74.' },
+  { id: 'blasted', name: 'Blasted Rock', digTm3: 2.30, swellPct: 0, bankTm3: 2.99, fill: 0.85, blasted: true, src: 'Muck-pile density 2.3 t/m³ per user (already swollen by blasting, so no further swell into the truck). Solid rock before blast 2.99 t/m³ = 2.3 × 1.30 (30 % blast swell) — replace with site value. Fill factor: average blasted rock 75–90 % (CAT47 p.30-2 / MIME 333 Table 3.3).' },
+  { id: 'overburden', name: 'Overburden', digTm3: 2.28, swellPct: 33, fill: 0.90, src: 'CAT47 p.30-6 "Decomposed rock 50 % rock / 50 % earth": bank 2 280, loose 1 720 kg/m³ (swell 33 %).' },
+  { id: 'soil', name: 'Soil', digTm3: 2.02, swellPct: 26, fill: 1.00, src: 'CAT47 p.30-6 "Earth — wet excavated": bank 2 020, loose 1 600 kg/m³ (swell 26 %). Fill: moist loam 100–110 %.' },
+  { id: 'till', name: 'Till (glacial)', digTm3: 2.20, swellPct: 22, fill: 0.90, src: 'Typical glacial till in-situ ≈ 2.2 t/m³, swell 22 % (estimate — not in CAT table; nearest "Clay & gravel"). Fill: "Soil, boulders, roots" 80–100 %. Verify with site tests.' },
+  { id: 'coal', name: 'Coal', digTm3: 1.75, swellPct: 35, fill: 0.95, src: 'Loose density 1.3 t/m³ per user; swell 35 % from CAT47 bituminous load factor 0.74 → in-situ ≈ 1.75 t/m³.' },
 ];
+export const looseOf = m => (+m.digTm3) / (1 + (+m.swellPct || 0) / 100);
 
 // Road surfaces — rolling resistance (% of GMW, radial tyres) and rubber-tyre traction coefficient.
 export const ROADS = [
@@ -202,15 +205,37 @@ export const ROADS = [
 ];
 export const ROAD_SRC = 'Rolling resistance: CAT47 p.30-2 Typical Rolling Resistance Factors (radial tyres). Traction: CAT47 p.30-3 / MIME 333 Table 3.5.';
 
-// Weather modifies the road: rr = max(rr + rrAdd, rrMin); traction = min(traction × tractionMult, tractionMax)
-export const WEATHER = [
+// Road surface condition modifies the base road: penalty = max(rr + rrAdd, rrMin) − rr; traction = min(μ × tractionMult, tractionMax).
+// Grading then removes part of that penalty (see GRADING).
+export const SURFACES = [
   { id: 'dry', name: 'Dry', rrAdd: 0, rrMin: 0, tractionMult: 1, tractionMax: 1, note: '' },
-  { id: 'wet', name: 'Wet / rain', rrAdd: 1.5, rrMin: 0, tractionMult: 0.82, tractionMax: 1, note: 'Clay loam dry 0.55 → wet 0.45 (CAT47); Euclid: wet muddy surface on firm base ≈ 4 % RR (Tannant 2001). +1.5 % RR is an estimate.' },
+  { id: 'wet', name: 'Wet', rrAdd: 1.5, rrMin: 0, tractionMult: 0.82, tractionMax: 1, note: 'Clay loam dry 0.55 → wet 0.45 (CAT47); wet muddy surface on firm base ≈ 4 % RR (Tannant 2001). +1.5 % RR is an estimate.' },
+  { id: 'muddy', name: 'Muddy', rrAdd: 4.0, rrMin: 0, tractionMult: 0.7, tractionMax: 0.4, note: 'Mud on the running surface: RR +4 %, traction ≈ 0.35–0.45 (estimate from CAT47 rutted/soft rows and Tannant 2001).' },
   { id: 'packedsnow', name: 'Packed snow', rrAdd: 0, rrMin: 2.5, tractionMult: 1, tractionMax: 0.25, note: 'Packed snow RR 2.5 %; traction 0.20 (CAT) – 0.55 (Tannant).' },
   { id: 'loosesnow', name: 'Loose snow', rrAdd: 0, rrMin: 4.5, tractionMult: 1, tractionMax: 0.18, note: 'Loose snow RR 4.5 % (Caterpillar 1988, in Tannant 2001); traction 0.10–0.25.' },
   { id: 'ice', name: 'Ice', rrAdd: 0, rrMin: 0, tractionMult: 1, tractionMax: 0.12, note: 'Ice traction 0.12 (CAT47); wet ice 0.05–0.10 (Tannant).' },
   { id: 'thaw', name: 'Spring thaw / break-up', rrAdd: 3.0, rrMin: 0, tractionMult: 0.85, tractionMax: 0.45, note: 'Spring break-up is a leading cause of road failure in Canadian mines (Tannant 2001). +3 % RR is an estimate.' },
 ];
+
+// Grader maintenance: share of the surface penalty that remains, and extra RR from ruts/spillage building up. Planning estimates.
+export const GRADING = [
+  { id: 'none', name: 'No grader', keep: 1.0, rrExtra: 1.0, note: 'Ruts, spillage and windrows build up through the shift (+1 % RR).' },
+  { id: 'shift', name: 'Graded once per shift', keep: 0.7, rrExtra: 0.3, note: 'Removes about 30 % of the snow/mud penalty on average over the shift.' },
+  { id: 'dedicated', name: 'Dedicated grader on the haul road', keep: 0.4, rrExtra: 0, note: 'Continuous clean-up of snow, mud and spillage (Tannant 2001 stresses routine grading).' },
+];
+
+// Weather = sky & visibility. Speed cap applies to the whole haul; efficiency multiplies production once.
+export const SKY = [
+  { id: 'clear', name: 'Clear', capKmh: 0, eff: 1.0, surface: 'dry', note: '' },
+  { id: 'overcast', name: 'Overcast', capKmh: 0, eff: 1.0, surface: null, note: '' },
+  { id: 'rain', name: 'Rain', capKmh: 45, eff: 0.97, surface: 'wet', note: 'Reduced visibility and wiper use; usually wets the road.' },
+  { id: 'snowing', name: 'Snowing', capKmh: 35, eff: 0.92, surface: 'loosesnow', note: 'Falling snow cuts visibility; usually loose snow on the road.' },
+  { id: 'fog', name: 'Fog', capKmh: 25, eff: 0.85, surface: null, note: 'Visibility below ~100 m: trucks slow right down and spacing increases.' },
+];
+export const VIS_SRC = 'Weather, dust and darkness factors are planning estimates (no OEM data). Edit them under Detailed → Operations → Advanced assumptions if your site has time-study data.';
+
+// Approximate monthly mean air temperature (°C), Elk Valley BC (Sparwood area). Used only as a default.
+export const MONTHLY_TEMP_C = [-8, -5, 0, 5, 10, 14, 17, 16, 11, 5, -2, -7];
 
 // Machine condition presets (age / reliability). All values are planning estimates — edit per site data.
 export const CONDITIONS = [
