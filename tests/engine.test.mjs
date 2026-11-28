@@ -168,5 +168,19 @@ if (!(t.haul.t > st.haul.t)) { fails++; console.log('FAIL  simulation should be 
   near('1000 t/day, 45 000 t from Sep 1 → finishes Oct 15', +sch.finish.date.slice(5).replace('-', ''), 1015, 0);
 }
 
+// Rope shovel: dipper limited by its rated payload per pass; Komatsu says 4 passes for a 360 t truck (4100XPC), 5 for the AC-90
+{
+  const T = TRUCKS.find(t => t.id === 'kom980e5'), S = LOADERS.find(l => l.id === 'ph4100xpc'), S9 = LOADERS.find(l => l.id === 'ph4100ac90');
+  const ops = { passRule: 'third', loadTimeMethod: 'n', frozenFillMult: 0.9, frozenCycleMult: 1.1 };
+  const mat = { looseTm3: 2.3, fill: 1.0 };
+  const p = matchPair(T, {}, { bucketM3: 61.2, maxPassT: 108.9, setup: 'face', jobCond: 'C', conditionId: 'good' }, S, mat, ops);
+  near('4100XPC dipper capped at 108.9 t', p.bucketT, 108.9, 1e-9); near('4100XPC → 980E-5: 3.33 raw passes', p.raw, 362.874 / 108.9, 1e-6); near('… 4 passes when rounding up (Komatsu table)', passCount(p.raw, 'up'), 4, 0);
+  near('face shovel: no setup factor', setupFactor({ setup: 'face' }).factor, 1, 0);
+  const p9 = matchPair(T, {}, { bucketM3: 49, maxPassT: 82, setup: 'face', jobCond: 'C', conditionId: 'good' }, S9, mat, ops);
+  near('4100XPC AC-90 → 980E-5: 5 passes', p9.n, 5, 0);
+  const g = TRUCKS.find(t => t.id === 'kom930e5');
+  near('930E-5 generated retarding at 30 km/h = 4026 kW / v', g.retarder.find(r => r[0] === 30)[1], 4026 / (30 / 3.6) / 9.81, 0.01);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
 process.exit(fails ? 1 : 0);

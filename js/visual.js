@@ -1,9 +1,9 @@
 // Visual (friendly) mode: a static mine scene you can click to change equipment,
 // plus plain-language results. Uses the same state and engine as the detailed calculator.
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611272213';
-import { hToClock } from './conditions.js?v=202611272213';
-import { byId } from './engine.js?v=202611272213';
-import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611272213';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, setupsFor, TRUCK_CLASSES, LOADER_CLASSES, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS } from './data/equipment.js?v=202611280619';
+import { hToClock } from './conditions.js?v=202611280619';
+import { byId } from './engine.js?v=202611280619';
+import { unit, fmt, fmtU, toDisp, toSI } from './units.js?v=202611280619';
 
 let api = null;           // hooks into app.js
 let R = null;             // latest engine result
@@ -38,7 +38,7 @@ const activeLoaders = () => api.state().loaders.map((l, i) => (+l.count > 0 ? i 
 
 // ------------------------------------------------------------------ SVG drawings (original, generic shapes)
 // ------------------------------------------------------------------ brand colours & machine drawings (original, generic side views)
-const brandOf = m => (/^CAT\b/i.test(m.name) ? 'cat' : /deere/i.test(m.name) ? 'jd' : /komatsu/i.test(m.name) ? 'kom' : /volvo/i.test(m.name) ? 'volvo' : 'other');
+const brandOf = m => ({ CAT: 'cat', 'John Deere': 'jd', Komatsu: 'kom', 'P&H': 'kom', Volvo: 'volvo' }[m.brand] || 'other');
 const brandFill = m => `var(--b-${brandOf(m)})`;
 const truckColor = i => { const t = api && api.state().trucks[i]; const m = t && byId(TRUCKS, t.modelId); return m ? brandFill(m) : 'var(--accent)'; };
 const tyre = (x, y, r) => `<g class="tyre"><circle cx="${x}" cy="${y}" r="${r}" class="tw"/><circle cx="${x}" cy="${y}" r="${r - 1.2}" class="tread"/><circle cx="${x}" cy="${y}" r="${r * 0.5}" class="rim"/><circle cx="${x}" cy="${y}" r="${r * 0.18}" class="hub"/></g>`;
@@ -89,6 +89,33 @@ function truckSVG(model) {
   </g>`;
 }
 
+// Electric rope shovel, side view: crawler, house, A-frame gantry, boom with sheave, dipper handle and dipper
+function shovelSVG(model) {
+  const b = brandOf(model), c = brandFill(model);
+  const rollers = [-30, -20, -10, 0, 10, 20, 30].map(x => `<circle cx="${x}" cy="-4" r="2.6" class="roller"/>`).join('');
+  return `<g class="brand-${b}">
+    <path d="M-40,-1 Q-47,-1 -47,-9 Q-47,-17 -40,-17 L40,-17 Q47,-17 47,-9 Q47,-1 40,-1 Z" class="track"/>
+    <path d="M-40,-1 Q-47,-1 -47,-9 Q-47,-17 -40,-17 L40,-17 Q47,-17 47,-9 Q47,-1 40,-1 Z" class="shoes"/>
+    <circle cx="-39" cy="-9" r="6" class="sprocket"/><circle cx="39" cy="-9" r="6" class="idler"/>${rollers}
+    <rect x="-16" y="-23" width="32" height="6" class="md"/>
+    <g class="ex-up">
+      <path d="M-48,-52 L20,-52 L22,-23 L-48,-23 Z" fill="${c}" class="pnl"/>
+      <path d="M-48,-36 L22,-36" class="md-line"/>
+      <path d="M-42,-48 L-42,-40 M-37,-48 L-37,-40 M-32,-48 L-32,-40 M-27,-48 L-27,-40" class="vent"/>
+      <path d="M4,-64 L18,-64 L19,-52 L4,-52 Z" fill="${c}" class="pnl"/><path d="M6,-62 L17,-62 L17.5,-54 L6,-54 Z" class="gl"/>
+      <path d="M-34,-52 L-20,-80 L-8,-52" class="rail"/><path d="M-20,-80 L-20,-52" class="rail"/>
+      <path d="M12,-30 L19,-34 L72,-90 L66,-93 Z" fill="${c}" class="pnl"/>
+      <path d="M-20,-80 L68,-92" class="rail"/>
+      <circle cx="69" cy="-91" r="5.5" class="sprocket"/>
+      <path d="M73,-88 L80,-56" class="rail"/>
+      <path d="M30,-56 L80,-38" class="cyl"/>
+      <path d="M68,-56 L88,-54 L90,-28 L72,-26 Q66,-40 68,-56 Z" class="bucket"/>
+      <path d="M90,-28 L93,-24 L91,-30 M84,-27 L86,-23 L86,-28" class="teeth"/>
+      <path class="ex-bload" d="M69,-54 Q78,-64 87,-53 Z"/>
+    </g>
+  </g>`;
+}
+const loaderSVG = (m, pose) => (m.cls === 'shovel' ? shovelSVG(m) : excavatorSVG(m, pose));
 function excavatorSVG(model, pose = 'dump') {
   const b = brandOf(model), c = brandFill(model);
   const rollers = [-22, -12, -2, 8, 18].map(x => `<circle cx="${x}" cy="-4" r="2.6" class="roller"/>`).join('');
@@ -126,7 +153,7 @@ function excavatorSVG(model, pose = 'dump') {
 function sceneVisible() { const el = $('#scene-wrap'); return !!(el && el.clientWidth > 0); }
 function sceneWidth() { const el = $('#scene-wrap'); const w = el ? el.clientWidth : 1000; return clamp(Math.round(w), 640, 1100); }
 const shortName = m => m.name.replace(/^(CAT|John Deere)\s+/i, '');
-const truckScale = m => clamp(Math.sqrt(m.ratedPayloadKg / 90000), 0.74, 1.05);
+const truckScale = m => clamp(Math.sqrt(m.ratedPayloadKg / 90000), 0.74, 1.3);
 
 function buildScene() {
   const svg = $('#scene'); if (!svg || !sceneVisible()) return;
@@ -148,7 +175,7 @@ function buildScene() {
   const exG = (i, x, y, pose, lblY) => {
     const m = byId(LOADERS, st.loaders[i].modelId);
     return `<g class="hot ex" data-pop="loader:${i}" tabindex="0" role="button" aria-label="Change excavator: ${esc(m.name)} (${setupOf(i) === 'bench' ? 'on a bench' : 'on the floor'})" transform="translate(${x},${y})">
-      ${excavatorSVG(m, pose)}<text class="lbl-sm" x="0" y="${lblY}" text-anchor="middle">${esc(m.name)}</text></g>`;
+      ${loaderSVG(m, pose)}<text class="lbl-sm" x="0" y="${lblY}" text-anchor="middle">${esc(m.name)}</text></g>`;
   };
   // loading stations, left to right; each takes the next truck in the line
   let ex = '', pads = '', cursor = toe;
@@ -238,7 +265,7 @@ function renderFleetBar() {
   const st = api.state();
   const lo = st.loaders.map((l, i) => {
     const m = byId(LOADERS, l.modelId); const b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
-    return `<button class="chip" data-pop="loader:${i}"><span class="sw" style="background:${brandFill(m)}"></span><b>${esc(m.name)}</b> × ${+l.count || 0}<small>${fmt('vol', b.m3, 1)} ${unit('vol')} bucket</small></button>`;
+    return `<button class="chip" data-pop="loader:${i}"><span class="sw" style="background:${brandFill(m)}"></span><b>${esc(m.name)}</b> × ${+l.count || 0}<small>${fmt('vol', b.m3, 1)} ${unit('vol')} ${m.cls === 'shovel' ? 'dipper' : 'bucket'}</small></button>`;
   }).join('');
   const tr = st.trucks.map((t, i) => {
     const m = byId(TRUCKS, t.modelId);
@@ -315,11 +342,28 @@ function modelCard(m, selected, kind, color) {
   const isT = /truck/.test(kind);
   const icon = isT
     ? `<svg viewBox="-46 -56 88 60" class="mc-ico"><g>${truckSVG(m)}</g></svg>`
-    : `<svg viewBox="-50 -88 136 92" class="mc-ico"><g>${excavatorSVG(m)}</g></svg>`;
+    : `<svg viewBox="-50 -96 146 100" class="mc-ico"><g>${loaderSVG(m)}</g></svg>`;
   const facts = isT
     ? `${fmtU('kg', m.ratedPayloadKg, 0)} payload · ${fmtU('vol', m.heapedM3, 1)} body`
-    : `${fmtU('power', m.netPowerKw, 0)} · buckets ${fmt('vol', Math.min(...m.buckets.map(b => b.m3)), 1)}–${fmt('vol', Math.max(...m.buckets.map(b => b.m3)), 1)} ${unit('vol')}`;
-  return `<button class="mcard ${selected ? 'sel' : ''}" data-pick="${kind}:${m.id}">${icon}<b>${esc(m.name)}</b><small>${esc(m.type)}</small><small>${facts}</small>${Object.keys(m.estimate || {}).length ? '<span class="badge est">some data estimated</span>' : ''}</button>`;
+    : `${m.electric ? 'electric' : fmtU('power', m.netPowerKw, 0)} · ${m.cls === 'shovel' ? 'dipper' : 'buckets'} ${fmt('vol', Math.min(...m.buckets.map(b => b.m3)), 1)}–${fmt('vol', Math.max(...m.buckets.map(b => b.m3)), 1)} ${unit('vol')}`;
+  return `<button class="mcard ${selected ? 'sel' : ''}" data-pick="${kind}:${m.id}" data-brand="${esc(m.brand)}" data-cls="${m.cls}" data-q="${esc(`${m.name} ${m.brand} ${m.type}`.toLowerCase())}">${icon}<b>${esc(m.name)}</b><small>${esc(m.type)}</small><small>${facts}</small>${Object.keys(m.estimate || {}).length ? '<span class="badge est">some data estimated</span>' : ''}</button>`;
+}
+// Model picker for long lists: search + type + brand filters, cards grouped by type
+function modelPicker(list, classes, selId, kind, color) {
+  const brands = [...new Set(list.map(x => x.brand))].sort();
+  const groups = classes.map(c => {
+    const items = list.filter(x => x.cls === c.id); if (!items.length) return '';
+    return `<div class="mp-group" data-cls="${c.id}"><h5>${esc(c.name)}</h5><div class="mcards">${items.map(x => modelCard(x, x.id === selId, kind, color)).join('')}</div></div>`;
+  }).join('');
+  return `<div class="mpicker"><div class="mp-bar"><input type="search" class="mp-q" placeholder="Search model…" aria-label="Search models">
+    <span class="mp-chips" data-f="cls"><button class="sel" data-v="">All types</button>${classes.filter(c => list.some(x => x.cls === c.id)).map(c => `<button data-v="${c.id}">${esc(c.name.replace(/ \(.*\)$/, ''))}</button>`).join('')}</span>
+    <span class="mp-chips" data-f="brand"><button class="sel" data-v="">All brands</button>${brands.map(b => `<button data-v="${esc(b)}">${esc(b)}</button>`).join('')}</span></div>${groups}</div>`;
+}
+function filterPicker(root) {
+  const q = (root.querySelector('.mp-q').value || '').trim().toLowerCase();
+  const f = {}; root.querySelectorAll('.mp-chips').forEach(g => { f[g.dataset.f] = g.querySelector('.sel')?.dataset.v || ''; });
+  root.querySelectorAll('.mcard').forEach(c => { c.hidden = !!((q && !c.dataset.q.includes(q)) || (f.cls && c.dataset.cls !== f.cls) || (f.brand && c.dataset.brand !== f.brand)); });
+  root.querySelectorAll('.mp-group').forEach(g => { g.hidden = ![...g.querySelectorAll('.mcard')].some(c => !c.hidden); });
 }
 function stepper(path, val, lab) {
   return `<div class="stepper"><span>${lab}</span><button data-step="${path}" data-d="-1" aria-label="Fewer">−</button><output>${val}</output><button data-step="${path}" data-d="1" aria-label="More">+</button></div>`;
@@ -338,9 +382,9 @@ function renderPop() {
     const m = byId(LOADERS, l.modelId);
     title.textContent = 'Excavator';
     body.innerHTML = `
-      <h4>Model</h4><div class="mcards">${LOADERS.map(x => modelCard(x, x.id === l.modelId, 'loader')).join('')}</div>
+      <h4>Model</h4>${modelPicker(LOADERS, LOADER_CLASSES, l.modelId, 'loader')}
       ${stepper(`loaders.${i}.count`, +l.count || 0, 'How many of these excavators')}
-      <h4>Where it stands</h4><div class="seg">${SETUPS.map(x => `<button class="${x.id === (l.setup || 'bench') ? 'sel' : ''}" data-setup="${i}:${x.id}">${esc(x.name)}</button>`).join('')}</div>
+      <h4>Where it stands</h4><div class="seg">${setupsFor(byId(LOADERS, l.modelId)).map(x => `<button class="${x.id === (l.setup || 'bench') ? 'sel' : ''}" data-setup="${i}:${x.id}">${esc(x.name)}</button>`).join('')}</div>
       ${(l.setup || 'bench') === 'bench' ? `<label>Bench height <span class="u">(${unit('len')}, blank = stick length, CAT recommendation)</span><input type="number" step="0.5" min="0" data-bind="loaders.${i}.benchHeightM" data-q="len" placeholder="${(() => { const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0]; return b.stickM ? `${fmt('len', b.stickM, 2)} (stick)` : ''; })()}"></label>` : ''}
       <p class="note" id="pop-live">${setupNote(i)}</p>
       <h4>How trucks are loaded</h4><div class="seg">${LOADING_SIDES.map(x => `<button class="${x.id === (l.loadingSide || 'single') ? 'sel' : ''}" data-side="${i}:${x.id}">${esc(x.name)}</button>`).join('')}</div>
@@ -362,7 +406,7 @@ function renderPop() {
     const one = kind === 'one';
     title.textContent = one ? `Truck: ${m.name}` : `Trucks: ${m.name}`;
     body.innerHTML = `
-      <h4>${one ? 'Change this truck to' : 'Model for all of these trucks'}</h4><div class="mcards">${TRUCKS.map(x => modelCard(x, x.id === t.modelId, one ? 'one-truck' : 'truck', truckColor(i))).join('')}</div>
+      <h4>${one ? 'Change this truck to' : 'Model for all of these trucks'}</h4>${modelPicker(TRUCKS, TRUCK_CLASSES, t.modelId, one ? 'one-truck' : 'truck', truckColor(i))}
       ${one ? `<h4>Settings for every ${esc(m.name)} in the line</h4>` : ''}
       ${stepper(`trucks.${i}.count`, +t.count || 0, `Number of ${esc(m.name)} in the line`)}
       ${slider(`trucks.${i}.bodyFillPct`, t.bodyFillPct === '' || t.bodyFillPct == null ? '' : +t.bodyFillPct / 100, 1, 50, 110, 'Body fill factor', `How much of the truck body's rated heaped volume (${fmtU('vol', m.heapedM3, 1)}, SAE 2:1) you actually use. 100 % = fully heaped. Lower it for sticky or blocky material, carry-back, or if operators keep loads low to avoid spillage.`, true)}
@@ -377,7 +421,7 @@ function renderPop() {
   } else if (kind === 'add-truck' || kind === 'add-loader') {
     const isT = kind === 'add-truck';
     title.textContent = isT ? 'Add trucks' : 'Add an excavator';
-    body.innerHTML = `<p class="note">Pick a model. You can change the number and details next.</p><div class="mcards">${(isT ? TRUCKS : LOADERS).map((x, k) => modelCard(x, false, isT ? 'new-truck' : 'new-loader', truckColor(st.trucks.length))).join('')}</div>`;
+    body.innerHTML = `<p class="note">Pick a model. You can change the number and details next.</p>${modelPicker(isT ? TRUCKS : LOADERS, isT ? TRUCK_CLASSES : LOADER_CLASSES, '', isT ? 'new-truck' : 'new-loader', truckColor(st.trucks.length))}`;
   } else if (kind === 'material') {
     title.textContent = 'Material being moved';
     const mat = byId(MATERIALS, st.materialId), md = api.matDerived();
@@ -450,6 +494,7 @@ function setupNote(i) {
   const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
   const L = { ...l, digDepthM: b.digDepthM, setup: l.setup || 'bench', benchHeightM: l.benchHeightM === '' || l.benchHeightM == null ? b.stickM : +l.benchHeightM };
   const f = api.setupFactor(L); if (!f.setup) return '';
+  if (f.setup.id === 'face') { const cyc0 = R && R.trucks[0] ? R.trucks[0].pairs[R.loaders.findIndex(x => x.modelId === l.modelId)] : null; return `${esc(f.setup.note)} Typical swing ${f.setup.swingDeg}°. Rated payload per pass ${b.maxT ? fmtU('mass', b.maxT, 1) : '—'} (a full dipper of dense material stops at this).${cyc0 ? ` Dipper cycle now <b>${cyc0.tc.toFixed(1)} s</b>.` : ''}`; }
   const cyc = R && R.trucks[0] ? R.trucks[0].pairs[R.loaders.findIndex(x => x.modelId === l.modelId)] : null;
   return `${esc(f.setup.note)} Cycle-time factor <b>×${f.factor.toFixed(2)}</b> (Komatsu: ${f.setup.id === 'bench' ? `digging depth ${(f.ratio * 100).toFixed(0)} % of the ${fmtU('len', b.digDepthM, 2)} maximum → ${esc(f.row.name)}` : 'digging above the tracks → below 40 %'}, ${esc(f.col.name)}), typical swing ${f.setup.swingDeg}°.${f.setup.id === 'bench' && b.stickM && +L.benchHeightM > b.stickM + 0.05 ? ` <b>This bench is higher than the ${b.stickM} m stick</b> — CAT recommends no higher than the stick length.` : ''}${cyc ? ` Bucket cycle now <b>${cyc.tc.toFixed(1)} s</b>.` : ''}`;
 }
@@ -490,6 +535,8 @@ function wire() {
       const p = stp.dataset.step; const v = Math.max(0, (+api.getPath(p) || 0) + +stp.dataset.d);
       setPathNum(p, v); afterChange(true); return;
     }
+    const chip = e.target.closest('.mp-chips button');
+    if (chip) { chip.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('sel', b === chip)); filterPicker(chip.closest('.mpicker')); return; }
     const pick = e.target.closest('[data-pick]');
     if (pick) {
       const [kind, id] = pick.dataset.pick.split(':'); const st = api.state();
@@ -504,7 +551,7 @@ function wire() {
         closePop(); afterChange(); return;
       } else if (kind === 'new-loader') {
         const m = byId(LOADERS, id);
-        st.loaders.push({ ...api.newLoader(), modelId: id, bucketId: m.defaultBucket, count: 1 }); popCtx = `loader:${st.loaders.length - 1}`;
+        st.loaders.push({ ...api.newLoader(), modelId: id, bucketId: m.defaultBucket, count: 1 }); popCtx = `loader:${st.loaders.length - 1}`; api.normaliseRows();
       }
       afterChange(true); return;
     }
@@ -535,6 +582,7 @@ function wire() {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#scene [data-dec]')) { e.preventDefault(); decTruck(+e.target.dataset.dec); }
   });
   document.addEventListener('input', e => {
+    if (e.target.classList && e.target.classList.contains('mp-q')) { filterPicker(e.target.closest('.mpicker')); return; }
     const s = e.target.dataset && e.target.dataset.slide; if (!s) return;
     const v = +e.target.value;
     api.setPath(s, s.endsWith('bodyFillPct') ? v : v / 100);

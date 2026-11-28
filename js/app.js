@@ -1,12 +1,12 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611272213';
-import { siteConditions, hToClock, clockToH } from './conditions.js?v=202611272213';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611272213';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611272213';
-import { renderEquipment, renderMethod } from './docs.js?v=202611272213';
-import { initVisual, updateVisual } from './visual.js?v=202611272213';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611272213';
-import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611272213';
-import { CLIMATE } from './data/equipment.js?v=202611272213';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, setupsFor, TRUCK_CLASSES, LOADER_CLASSES, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611280619';
+import { siteConditions, hToClock, clockToH } from './conditions.js?v=202611280619';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611280619';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611280619';
+import { renderEquipment, renderMethod } from './docs.js?v=202611280619';
+import { initVisual, updateVisual } from './visual.js?v=202611280619';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611280619';
+import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611280619';
+import { CLIMATE } from './data/equipment.js?v=202611280619';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -200,20 +200,28 @@ function onBoundInput(e) {
 
 // ------------------------------------------------------------------ fleet rows
 function normaliseRows() {
-  state.loaders.forEach(l => { const m = byId(LOADERS, l.modelId); if (!m.buckets.some(b => b.id === l.bucketId)) l.bucketId = m.defaultBucket; });
+  state.loaders.forEach(l => {
+    const m = byId(LOADERS, l.modelId); if (!m.buckets.some(b => b.id === l.bucketId)) l.bucketId = m.defaultBucket;
+    const ok = setupsFor(m); if (!ok.some(x => x.id === (l.setup || 'bench'))) { l.setup = ok[0].id; l.swingDeg = ''; }
+  });
 }
+// long model lists: grouped by class, then brand
+const optGrouped = (list, classes, v, lab = x => x.name) => classes.map(c => {
+  const items = list.filter(x => x.cls === c.id); if (!items.length) return '';
+  return `<optgroup label="${esc(c.name)}">${items.slice().sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name, 'en', { numeric: true })).map(x => `<option value="${x.id}" ${x.id === v ? 'selected' : ''}>${esc(lab(x))}</option>`).join('')}</optgroup>`;
+}).join('');
 const opt = (list, v, lab = x => x.name) => list.map(x => `<option value="${x.id}" ${x.id === v ? 'selected' : ''}>${esc(lab(x))}</option>`).join('');
 function renderRows() {
   $('#loader-rows').innerHTML = state.loaders.map((l, i) => {
     const m = byId(LOADERS, l.modelId);
     const cond = byId(CONDITIONS, l.conditionId);
     return `<div class="row"><button class="rm" data-rm="loaders.${i}" title="Remove">×</button><div class="grid">
-      <label>Model<select data-bind="loaders.${i}.modelId">${opt(LOADERS, l.modelId)}</select></label>
+      <label>Model<select data-bind="loaders.${i}.modelId">${optGrouped(LOADERS, LOADER_CLASSES, l.modelId)}</select></label>
       <label class="span2">Bucket<select data-bind="loaders.${i}.bucketId">${m.buckets.map(b => `<option value="${b.id}" ${b.id === l.bucketId ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
       <label>Number of units<input type="number" min="0" step="1" data-bind="loaders.${i}.count"></label>
       <label class="span2">Job condition<select data-bind="loaders.${i}.jobCond">${opt(JOB_CONDITIONS, l.jobCond)}</select></label>
       <label class="span2">Truck loading<select data-bind="loaders.${i}.loadingSide">${opt(LOADING_SIDES, l.loadingSide || 'single')}</select></label>
-      <label class="span2">Digging face setup<select data-bind="loaders.${i}.setup">${opt(SETUPS, l.setup || 'bench')}</select></label>
+      <label class="span2">Digging face setup<select data-bind="loaders.${i}.setup">${opt(setupsFor(m), l.setup || 'bench')}</select></label>
       ${(l.setup || 'bench') === 'bench' ? `<label>Bench height <span class="u" data-u="len">${unit('len')}</span><input type="number" step="0.5" min="0" data-bind="loaders.${i}.benchHeightM" data-q="len" placeholder="${(() => { const b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0]; return b.stickM ? `= stick ${round(toDisp('len', b.stickM), 2)}` : ''; })()}"></label>` : ''}
       <label>Swing angle <span class="u">°</span><input type="number" step="5" data-bind="loaders.${i}.swingDeg" placeholder="${(byId(SETUPS, l.setup || 'bench') || { swingDeg: 90 }).swingDeg}"></label>
       <label>Machine condition<select data-bind="loaders.${i}.conditionId">${opt(CONDITIONS, l.conditionId)}</select></label>
@@ -225,7 +233,7 @@ function renderRows() {
   $('#truck-rows').innerHTML = state.trucks.map((t, i) => {
     const m = byId(TRUCKS, t.modelId), cond = byId(CONDITIONS, t.conditionId);
     return `<div class="row"><button class="rm" data-rm="trucks.${i}" title="Remove">×</button><div class="grid">
-      <label class="span2">Model<select data-bind="trucks.${i}.modelId">${opt(TRUCKS, t.modelId, x => `${x.name} — ${x.type}`)}</select></label>
+      <label class="span2">Model<select data-bind="trucks.${i}.modelId">${optGrouped(TRUCKS, TRUCK_CLASSES, t.modelId, x => `${x.name} — ${fmtU('kg', x.ratedPayloadKg, 0)}`)}</select></label>
       <label>Number of trucks<input type="number" min="0" step="1" data-bind="trucks.${i}.count"></label>
       <label>Machine condition<select data-bind="trucks.${i}.conditionId">${opt(CONDITIONS, t.conditionId)}</select></label>
       <label>Availability <span class="u">%</span><input type="number" step="1" data-bind="trucks.${i}.availabilityPct" placeholder="${Math.round(cond.availability * 100)}"></label>
@@ -253,7 +261,7 @@ function toEngineInput(siteIn = null, main = !siteIn) {
     material: { looseTm3: looseOf(s.material), fill: s.material.fill, frozen: s.material.frozen },
     loaders: s.loaders.map(l => {
       const m = byId(LOADERS, l.modelId), b = m.buckets.find(x => x.id === l.bucketId) || m.buckets[0];
-      return { modelId: l.modelId, count: +l.count || 0, bucketM3: b.m3, loadHeightM: b.loadHeightM, digDepthM: b.digDepthM, stickM: b.stickM, setup: l.setup || 'bench', loadingSide: l.loadingSide || 'single', benchHeightM: l.benchHeightM === '' || l.benchHeightM == null ? (b.stickM || 0) : +l.benchHeightM, jobCond: l.jobCond, swingDeg: l.swingDeg === '' || l.swingDeg == null ? null : +l.swingDeg,
+      return { modelId: l.modelId, count: +l.count || 0, bucketM3: b.m3, maxPassT: b.maxT || 0, loadHeightM: b.loadHeightM, digDepthM: b.digDepthM, stickM: b.stickM, setup: l.setup || 'bench', loadingSide: l.loadingSide || 'single', benchHeightM: l.benchHeightM === '' || l.benchHeightM == null ? (b.stickM || 0) : +l.benchHeightM, jobCond: l.jobCond, swingDeg: l.swingDeg === '' || l.swingDeg == null ? null : +l.swingDeg,
         conditionId: l.conditionId, availability: l.availabilityPct === '' ? '' : +l.availabilityPct / 100, cycleOverrideS: l.cycleOverrideS || '', fillOverride: l.fillOverride || '' };
     }),
     trucks: s.trucks.map(t => ({ modelId: t.modelId, count: +t.count || 0, conditionId: t.conditionId, availability: t.availabilityPct === '' ? '' : +t.availabilityPct / 100,
@@ -450,7 +458,7 @@ function renderTags() {
   result.loaders.forEach((l, j) => {
     const tc = result.trucks[0]?.pairs[j]?.tc;
     const el = $(`#ltag-${active[j]}`);
-    if (el) el.innerHTML = `Net ${fmtU('power', l.model.netPowerKw, 0)} · bucket ${fmtU('vol', l.bucketM3, 1)} · max loading height ${fmtU('len', l.loadHeightM, 1)} · ${setupTag(l)} · cycle used <b>${tc ? tc.toFixed(1) : '—'} s</b> · availability ${(l.A * 100).toFixed(0)} %${Object.keys(l.model.estimate).length ? ' · <span class="badge est">cycle times are handbook estimates</span>' : ''}`;
+    if (el) el.innerHTML = `${l.model.electric ? 'Electric drive (no diesel)' : `Net ${fmtU('power', l.model.netPowerKw, 0)}`} · ${l.model.cls === 'shovel' ? 'dipper' : 'bucket'} ${fmtU('vol', l.bucketM3, 1)} · max loading height ${fmtU('len', l.loadHeightM, 1)} · ${setupTag(l)} · cycle used <b>${tc ? tc.toFixed(1) : '—'} s</b> · availability ${(l.A * 100).toFixed(0)} %${Object.keys(l.model.estimate).length ? ' · <span class="badge est">cycle times are handbook estimates</span>' : ''}`;
   });
 }
 

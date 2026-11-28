@@ -6,7 +6,7 @@
 // The cautious ↔ optimistic slider moves every monthly value from its median (P50) towards the value of a
 // 1-in-10 bad year (P90 of snow/rain days, P10 of temperature) or a 1-in-10 good year (the opposite).
 // Values never go outside the range seen in the station's own records.
-import { CLIMATE } from './data/equipment.js?v=202611272213';
+import { CLIMATE } from './data/equipment.js?v=202611280619';
 
 export const LAPSE_C_PER_M = 0.006; // standard environmental lapse rate, °C per m of elevation
 export const CLIMATE_KEYS = ['tmean', 'pr02', 'sn02', 'sn5', 'sog1', 'fog'];

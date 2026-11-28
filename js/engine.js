@@ -2,7 +2,7 @@
 // Methods follow MIME 333 Ch.3 (Mitri & Sasmito), the Caterpillar Performance Handbook Ed.47,
 // the Komatsu Specifications & Application Handbook Ed.32 and Burt & Caccetta (2007, corrigendum 2008).
 
-import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611272213';
+import { TRUCKS, LOADERS, ROADS, SURFACES, GRADING, CONDITIONS, SETUPS, KOM_CYCLE_FACTOR } from './data/equipment.js?v=202611280619';
 
 export const G = 9.81;
 const BETA = 0.268;  // kg fuel / kW·h (MIME 333 formula sheet)
@@ -198,6 +198,8 @@ export function travel(truck, gmwKg, segs, ctx) {
 export function setupFactor(loader) {
   const st = byId(SETUPS, loader.setup);
   if (!st) return { factor: 1, setup: null };
+  // rope / face shovel: the published cycle already covers digging the face in front, no conversion factor
+  if (st.id === 'face') return { factor: 1, setup: st, ratio: 0, row: { name: 'not applied' }, col: { name: 'face shovel' } };
   const depth = st.id === 'bench' ? Math.max(0, +loader.benchHeightM || 0) : 0;
   const ratio = loader.digDepthM ? depth / loader.digDepthM : 0;
   const row = KOM_CYCLE_FACTOR.rows.find(r => ratio < r.max) || KOM_CYCLE_FACTOR.rows.at(-1);
@@ -228,8 +230,10 @@ export function passCount(raw, rule) {
 
 export function matchPair(truck, truckIn, loader, model, material, ops) {
   const ff = (loader.fillOverride ? +loader.fillOverride : material.fill) * (material.frozen ? ops.frozenFillMult : 1);
-  const bucketM3 = loader.bucketM3 * ff;
-  const bucketT = bucketM3 * material.looseTm3;
+  // a rope shovel's dipper is also limited by its rated payload per pass
+  const capT = +loader.maxPassT > 0 ? +loader.maxPassT : Infinity;
+  const bucketT = Math.min(loader.bucketM3 * ff * material.looseTm3, capT);
+  const bucketM3 = bucketT / material.looseTm3;
   const ratedT = (truckIn.payloadKg || truck.ratedPayloadKg) / 1000;
   // body fill factor: share of the SAE 2:1 heaped body volume actually usable (sticky / blocky material, carry-back, spillage)
   const bf = truckIn.bodyFill != null && truckIn.bodyFill !== '' && +truckIn.bodyFill > 0 ? +truckIn.bodyFill : 1;

@@ -6,6 +6,13 @@ export const SOURCES = {
   CAT47: 'Caterpillar Performance Handbook, Edition 47 (2017)',
   CAT745WEB: 'cat.com — 745 Articulated Truck specifications (current model, Tier 4 Final / Stage V)',
   JD460: 'John Deere 460 P-Tier ADT spec sheet MT460PAU (deere.com)',
+  KOM830: 'Komatsu 830E-5 brochure AESS924-01 (09/22) and komatsu.com product page',
+  KOM930: 'Komatsu 930E-5 brochure AESS921-01 (02/24) and komatsu.com product page',
+  KOM980: 'Komatsu 980E-5 brochure AESS932-01 (06/24)',
+  CAT797: 'Caterpillar 797F technical specifications AEHQ5884-09 (12/2023)',
+  PH4800: 'Komatsu P&H 4800XPC electric rope shovel spec sheet EN-4800XPCSP01 (2020)',
+  PH4100: 'Komatsu P&H 4100XPC AC brochure EN-4100XPCAC01-0218-V2 and komatsu.com 4100XPC page; electric rope shovel range brochure EN-EMS01-0318-V2',
+  PH4100AC90: 'Komatsu P&H 4100XPC AC-90 spec sheet EN-4100XPCAC9001-0118-V2 and komatsu.com product page',
   VOLVOA60H: 'Volvo A60H articulated hauler product guide, ref. 20062762_A (volvoce.com)',
   VOLVOA40: 'Volvo A40 articulated hauler product guide, ref. 20064352_D (volvoce.com)',
   JD870: 'John Deere 870 P-Tier excavator spec sheet ME870PAJ (deere.com, 22-08)',
@@ -189,6 +196,114 @@ export const TRUCKS = [
     src: { specs: 'VOLVOA60H product guide 20062762_A: D16J 467 kW net @1800 rpm, payload 55 000 kg, empty 43 750 kg, loaded 98 750 kg, body 25.8 / 33.6 m³ (35.1 with tailgate), gears 7–55 km/h, tipping 13 s / lowering 10 s', rimpull: 'Generated from published net power (not published by Volvo)', retarder: 'Generated: ≈ 715 kW continuous (CAT 745C class 550 kW scaled by engine power) — Volvo gives no figure for its engine brake', altitude: 'Not published — assumed no derate below 3000 m' },
     estimate: { rimpull: true, retarder: true, altitude: true, loadingHeight: 'Loading height not in the Volvo product guide — ≈ 3.65 m estimated from body size; check against the dealer drawing.' },
   },
+  {
+    id: 'kom830e5', brand: 'Komatsu', cls: 'rigid',
+    name: 'Komatsu 830E-5',
+    type: 'Rigid off-highway truck (electric drive)',
+    emptyKg: 184336, // GVW 411 136 kg − nominal payload 226 800 kg (the brochure weight table labels are inconsistent)
+    ratedPayloadKg: 226800,
+    gmwKg: 411136,
+    heapedM3: 158, // SAE 2:1, standard Komatsu body
+    struckM3: 119,
+    netPowerKw: 1778,
+    grossPowerKw: 1865,
+    engine: 'Komatsu SDA16V160',
+    topSpeedKmh: 64.5,
+    gears: 'electric (AC drive)',
+    gearSpeedsKmh: [8, 12, 16, 22, 30, 40, 52, 64.5],
+    driveAxle: 'rear (AC wheel motors)',
+    driverWeightFracEmpty: 0.52,
+    driverWeightFracLoaded: 0.67,
+    loadingHeightM: 6.26,
+    tires: '50/80R57',
+    fuelTankL: 4542,
+    rimpull: null, retarder: null, retarderKw: 3207, retarderCapT: 'stall',
+    altitude: [[0, 1], [3000, 1], [4600, 0.85]],
+    defaults: { spotMin: 0.7, dumpMin: 1.1 },
+    src: { specs: 'KOM830 — payload 227 t, GVW 411 136 kg, heaped 158 / struck 119 m³, SDA16V160 1 778 kW net / 1 865 kW gross, 64.5 km/h, dynamic retarding 3 207 kW, loading height 6.26 m, 50/80R57', rimpull: 'Generated from net power (brochure performance graph is an image)', retarder: 'Generated from the published 3 207 kW electric dynamic retarding', altitude: 'Not published — assumed no derate below 3000 m', fixed: 'Spot / dump: CAT47 p.10-20 typical fixed times (large rigid trucks)' },
+    estimate: { rimpull: true, retarder: true, altitude: true, weights: 'Empty weight = GVW − payload; weight split assumed 48/52 empty and 33/67 loaded (the brochure table prints 48 %/67 % empty).' },
+  },
+  {
+    id: 'kom930e5', brand: 'Komatsu', cls: 'rigid',
+    name: 'Komatsu 930E-5',
+    type: 'Rigid off-highway truck (electric drive)',
+    emptyKg: 231331,
+    ratedPayloadKg: 290000,
+    gmwKg: 521640,
+    heapedM3: 202,
+    struckM3: 151,
+    netPowerKw: 1930,
+    grossPowerKw: 2014,
+    engine: 'Komatsu SSDA16V160',
+    topSpeedKmh: 64.5,
+    gears: 'electric (AC drive)',
+    gearSpeedsKmh: [8, 12, 16, 22, 30, 40, 52, 64.5],
+    driveAxle: 'rear (AC wheel motors)',
+    driverWeightFracEmpty: 0.52,
+    driverWeightFracLoaded: 0.67,
+    loadingHeightM: 6.65,
+    tires: '53/80R63',
+    fuelTankL: 4542,
+    rimpull: null, retarder: null, retarderKw: 4026, retarderCapT: 'stall',
+    altitude: [[0, 1], [3000, 1], [4600, 0.85]],
+    defaults: { spotMin: 0.7, dumpMin: 1.1 },
+    src: { specs: 'KOM930 — payload 290 t, GVW 521 640 kg, EVW 231 331 kg, heaped 202 / struck 151 m³, SSDA16V160 1 930 kW net / 2 014 kW gross, 64.5 km/h, 4 026 kW continuous retarding, weight 48/52 empty, 33/67 loaded, loading height 6.65 m, 53/80R63', rimpull: 'Generated from net power (brochure performance graph is an image)', retarder: 'Generated from the published 4 026 kW continuous retarding', altitude: 'Not published — assumed no derate below 3000 m', fixed: 'Spot / dump: CAT47 p.10-20 typical fixed times (large rigid trucks)' },
+    estimate: { rimpull: true, retarder: true, altitude: true },
+  },
+  {
+    id: 'kom980e5', brand: 'Komatsu', cls: 'rigid',
+    name: 'Komatsu 980E-5',
+    type: 'Rigid off-highway truck (electric drive)',
+    emptyKg: 265125,
+    ratedPayloadKg: 362874,
+    gmwKg: 627999,
+    heapedM3: 250,
+    struckM3: 183,
+    netPowerKw: 2495,
+    grossPowerKw: 2610,
+    engine: 'Komatsu SSDA18V170',
+    topSpeedKmh: 64,
+    gears: 'electric (AC drive)',
+    gearSpeedsKmh: [8, 12, 16, 22, 30, 40, 52, 64],
+    driveAxle: 'rear (AC wheel motors)',
+    driverWeightFracEmpty: 0.52,
+    driverWeightFracLoaded: 0.67,
+    loadingHeightM: 7.09,
+    tires: '59/80R63',
+    fuelTankL: 5300,
+    rimpull: null, retarder: null, retarderKw: 4476, retarderCapT: 'stall',
+    altitude: [[0, 1], [3000, 1], [4600, 0.85]],
+    defaults: { spotMin: 0.7, dumpMin: 1.1 },
+    src: { specs: 'KOM980 — payload 363 t (362 874 kg), GVW 627 999 kg, EVW 265 125 kg, heaped 250 / struck 183 m³, SSDA18V170 2 495 kW net / 2 610 kW gross, 64 km/h, 4 476 kW retarding, weight 48/52 empty, 33/67 loaded, loading height 7.09 m, 59/80R63', rimpull: 'Generated from net power (brochure performance graph is an image)', retarder: 'Generated from the published 4 476 kW dynamic retarding', altitude: 'Not published — assumed no derate below 3000 m', fixed: 'Spot / dump: CAT47 p.10-20 typical fixed times (large rigid trucks)' },
+    estimate: { rimpull: true, retarder: true, altitude: true },
+  },
+  {
+    id: 'cat797f', brand: 'CAT', cls: 'rigid',
+    name: 'CAT 797F',
+    type: 'Rigid off-highway truck',
+    emptyKg: 260690, // target GMW 623 690 − nominal payload 363 000 (chassis + body depend on the body chosen)
+    ratedPayloadKg: 363000,
+    gmwKg: 623690,
+    heapedM3: 253, // MSD II body, SAE 2:1, 240–267 m³ by configuration (mid value)
+    struckM3: 200, // 188–213 m³
+    netPowerKw: 2828,
+    grossPowerKw: 2983,
+    engine: 'Cat C175-20',
+    topSpeedKmh: 67.6,
+    gears: 7,
+    gearSpeedsKmh: [11.3, 15.4, 20.8, 28.2, 38.2, 51.5, 67.6],
+    driveAxle: 'rear',
+    driverWeightFracEmpty: 0.528,
+    driverWeightFracLoaded: 0.667,
+    loadingHeightM: 7.0,
+    tires: '59/80R63',
+    fuelTankL: 3785,
+    rimpull: null, retarder: null, retarderKw: 3760, retarderCapT: 'stall',
+    altitude: [[0, 1], [3000, 1], [4600, 0.9]],
+    defaults: { spotMin: 0.7, dumpMin: 1.1 },
+    src: { specs: 'CAT797 — payload 363 t, target GMW 623 690 kg, MSD II body 240–267 m³ heaped / 188–213 m³ struck, C175-20 2 828 kW net / 2 983 kW gross, 7 gears 11.3–67.6 km/h, weight 47.2/52.8 empty, 33.3/66.7 loaded, loading height 6 998 mm, 59/80R63', rimpull: 'Generated from net power (the tech spec has no rimpull chart; the Handbook chart can replace it)', retarder: 'Generated: ≈ 3 760 kW continuous (777E ratio of retarding to net power, 1.33)', altitude: 'Assumed like other C175 engines; check the CAT Handbook altitude table', fixed: 'CAT47 p.10-20 typical fixed times' },
+    estimate: { rimpull: true, retarder: true, altitude: true, weights: 'Empty weight = target GMW − payload; heaped / struck = middle of the MSD II range.', gears: 'Only 1st (11.3) and 7th (67.6 km/h) gear speeds are printed; gears 2–6 spaced geometrically.' },
+  },
 ];
 
 export const LOADERS = [
@@ -270,6 +385,70 @@ export const LOADERS = [
     },
     estimate: { buckets: 'Deere lists only the 3.49 m³ bucket (4.4 m arm); the 4.0, 4.6 (ME) and 2.7 m³ (reach) sizes are typical for this class — check with the dealer.', cycle: true, altitude: true },
   },
+  {
+    id: 'ph4800xpc', brand: 'P&H', cls: 'shovel',
+    name: 'P&H 4800XPC',
+    type: 'Electric rope shovel',
+    electric: true,
+    netPowerKw: null,
+    operatingWeightKg: null,
+    engine: 'Electric (AC drives), 3 750 kVA minimum supply transformer',
+    swingRpm: null,
+    buckets: [ // nominal dipper capacity, SAE struck; loadHeightM = maximum dumping height with the door open
+      { id: 'd657', label: 'Dipper 65.7 m³ (86 yd³, SAE struck)', m3: 65.7, loadHeightM: 10.8, maxT: 122.5 },
+      { id: 'd703', label: 'Dipper 70.3 m³ (92 yd³, SAE struck)', m3: 70.3, loadHeightM: 10.8, maxT: 122.5 },
+    ],
+    defaultBucket: 'd657',
+    cycleS: { A: 28, B: 31, C: 34, D: 38, E: 43 },
+    altitude: [[0, 1], [5000, 1]],
+    fuelLoadFactor: 0,
+    matching: 'Komatsu: optimum truck size 360 t (400 st).',
+    src: { specs: 'PH4800 — nominal dipper 65.7–70.3 m³ SAE struck (86–92 yd³), nominal payload 122.5 t, rated suspended load 223.6 t, max dumping height (door open) 10.8 m, max dump reach 19.4 m, cutting height 18.9 m, productivity 9 712–12 950 t/h', cycle: 'Estimate: rope-shovel swing-to-truck cycle 30–35 s typical; the published 9 712–12 950 t/h with a 122.5 t payload implies 34–45 s including delays', altitude: 'Electric drive — no engine altitude derate' },
+    estimate: { cycle: 'Cycle times are typical rope-shovel values (not published by Komatsu).' },
+  },
+  {
+    id: 'ph4100xpc', brand: 'P&H', cls: 'shovel',
+    name: 'P&H 4100XPC',
+    type: 'Electric rope shovel',
+    electric: true,
+    netPowerKw: 4568, // continuous hoist 2 388 + swing 1 635 + crowd 545 kW
+    operatingWeightKg: [1532235, 1536771],
+    engine: 'Electric (AC drives): hoist 2 × 1 194, swing 3 × 545, crowd 545, propel 2 × 545 kW continuous',
+    swingRpm: null,
+    buckets: [
+      { id: 'd528', label: 'Dipper 52.8 m³ (69 yd³, SAE struck)', m3: 52.8, loadHeightM: 9.5, maxT: 99.8 },
+      { id: 'd612', label: 'Dipper 61.2 m³ (82 yd³, SAE struck)', m3: 61.2, loadHeightM: 9.5, maxT: 108.9 },
+    ],
+    defaultBucket: 'd612',
+    cycleS: { A: 27, B: 30, C: 33, D: 37, E: 42 },
+    altitude: [[0, 1], [5000, 1]],
+    fuelLoadFactor: 0,
+    matching: 'Komatsu: optimum truck size 218–363 t; 4 passes for a 360 t truck.',
+    src: { specs: 'PH4100 — nominal dipper 52.8–61.2 m³ SAE struck (69–82 yd³), nominal payload 99.8–108.9 t, dumping height (door open, bail dipper) 9.5 m, working weight 1 532 235–1 536 771 kg, motors (continuous) hoist 2 388 kW, swing 1 635 kW, crowd 545 kW, propel 1 090 kW. Komatsu now builds the 4100XPC with AC drives.', cycle: 'Estimate: rope-shovel swing-to-truck cycle 30–35 s typical', altitude: 'Electric drive — no engine altitude derate' },
+    estimate: { cycle: 'Cycle times are typical rope-shovel values (not published by Komatsu).' },
+  },
+  {
+    id: 'ph4100ac90', brand: 'P&H', cls: 'shovel',
+    name: 'P&H 4100XPC AC-90',
+    type: 'Electric rope shovel',
+    electric: true,
+    netPowerKw: null,
+    operatingWeightKg: null,
+    engine: 'Electric (AC drives), 3 750 kVA minimum supply transformer',
+    swingRpm: null,
+    buckets: [
+      { id: 'd42', label: 'Dipper 42 m³ (54 yd³, SAE struck)', m3: 42, loadHeightM: 10.2, maxT: 73 },
+      { id: 'd49', label: 'Dipper 49 m³ (64 yd³, SAE struck)', m3: 49, loadHeightM: 10.2, maxT: 82 },
+    ],
+    defaultBucket: 'd49',
+    cycleS: { A: 27, B: 30, C: 33, D: 37, E: 42 },
+    altitude: [[0, 1], [5000, 1]],
+    fuelLoadFactor: 0,
+    matching: 'Komatsu: optimum truck size 218–360 t; 5 passes for a 360 t truck.',
+    src: { specs: 'PH4100AC90 — nominal dipper 42–49 m³ SAE struck (54–64 yd³), nominal payload 73–82 t, rated suspended load 173 t, dumping height (door open) 10.2 m', cycle: 'Estimate: rope-shovel swing-to-truck cycle 30–35 s typical', altitude: 'Electric drive — no engine altitude derate' },
+    estimate: { cycle: 'Cycle times are typical rope-shovel values (not published by Komatsu).' },
+  },
+
 ];
 
 // Materials — entered as density at the dig face + swell from dig face to truck.
@@ -387,12 +566,21 @@ export const LOADING_SIDES = [
   { id: 'double', name: 'Double side (next truck spots while one is loaded)', short: 'double-side', note: 'Trucks are loaded on both sides: the next truck spots while the current one is loaded, so the excavator is busy only for the loading passes (Burt & Caccetta). Needs room at the face for two trucks.' },
 ];
 
+// Brand and class for filters and pickers (filled in for models that do not set them)
+export const TRUCK_CLASSES = [{ id: 'rigid', name: 'Rigid body trucks' }, { id: 'adt', name: 'Articulated trucks (ADT)' }];
+export const LOADER_CLASSES = [{ id: 'backhoe', name: 'Hydraulic excavators (backhoe)' }, { id: 'shovel', name: 'Shovels (rope / face shovel)' }];
+const brandFromName = n => (/^CAT\b/i.test(n) ? 'CAT' : /deere/i.test(n) ? 'John Deere' : /volvo/i.test(n) ? 'Volvo' : /komatsu/i.test(n) ? 'Komatsu' : /^P&H/.test(n) ? 'P&H' : /liebherr/i.test(n) ? 'Liebherr' : 'Other');
+TRUCKS.forEach(t => { t.brand = t.brand || brandFromName(t.name); t.cls = t.cls || (/articulated/i.test(t.type) ? 'adt' : 'rigid'); });
+LOADERS.forEach(l => { l.brand = l.brand || brandFromName(l.name); l.cls = l.cls || (/shovel/i.test(l.type) ? 'shovel' : 'backhoe'); });
 export const SETUPS = [
   { id: 'bench', name: 'On a bench above the truck (top loading)', short: 'On bench', swingDeg: 60, dumpCol: 'normal',
     note: 'Excavator digs the face below its tracks (digging depth ≈ bench height) and dumps down into a truck on the lower level: low lift, good view of the body, short swing. Bench ≈ truck rail height and not higher than the stick length (CAT; Terex O&K). Komatsu 3A-131: for backhoes the bench should not exceed the dump-body height for efficient loading.' },
   { id: 'floor', name: 'On the floor, same level as the truck', short: 'On floor', swingDeg: 110, dumpCol: 'rather',
     note: 'Excavator digs material above its tracks and must lift every bucket over the side of a truck standing at the same level. Komatsu 3A-131: "requires a larger swing angle, cycle time is longer. Also, fuel consumption increases due to higher lift." Litvin & Litvin (2020): same-level loading is less productive than loading a truck below the excavator.' },
+  { id: 'face', name: 'Shovel on the pit floor, digging the face in front', short: 'Face shovel', swingDeg: 90, forCls: 'shovel',
+    note: 'A rope or face shovel stands on the pit floor and digs the face above its tracks; trucks spot beside it at the same level and the dipper dumps from above (dump height with the door open). Its published cycle already covers this way of working, so no setup factor is applied.' },
 ];
+export const setupsFor = model => SETUPS.filter(s => (s.forCls || 'backhoe') === ((model && model.cls) || 'backhoe'));
 
 // Machine condition presets (age / reliability). All values are planning estimates — edit per site data.
 export const CONDITIONS = [
@@ -425,7 +613,8 @@ export function buildGeneratedCurves() {
     }
     if (!t.retarder) {
       const pret = t.retarderKw || 550; // kW continuous
-      t.retarder = t.gearSpeedsKmh.map(v => [v, +Math.min(30, pret / (v / 3.6) / 9.81).toFixed(2)]);
+      const cap = t.retarderCapT === 'stall' ? 0.59 * t.gmwKg / 1000 : (t.retarderCapT || 30);
+      t.retarder = t.gearSpeedsKmh.map(v => [v, +Math.min(cap, pret / (v / 3.6) / 9.81).toFixed(2)]);
     }
   }
 }
