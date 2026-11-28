@@ -1,12 +1,12 @@
-import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, setupsFor, TRUCK_CLASSES, LOADER_CLASSES, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611280619';
-import { siteConditions, hToClock, clockToH } from './conditions.js?v=202611280619';
-import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611280619';
-import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611280619';
-import { renderEquipment, renderMethod } from './docs.js?v=202611280619';
-import { initVisual, updateVisual } from './visual.js?v=202611280619';
-import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611280619';
-import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611280619';
-import { CLIMATE } from './data/equipment.js?v=202611280619';
+import { TRUCKS, LOADERS, MATERIALS, ROADS, SURFACES, SKY, GRADING, SETUPS, setupsFor, TRUCK_CLASSES, LOADER_CLASSES, LOADING_SIDES, CONDITIONS, JOB_CONDITIONS, ROAD_SRC, SOURCES, looseOf } from './data/equipment.js?v=202611280644';
+import { siteConditions, hToClock, clockToH } from './conditions.js?v=202611280644';
+import { computeScenario, sweepTrucks, resolveRoad, profileFromXYZ, byId, interp, setupFactor, swingOf } from './engine.js?v=202611280644';
+import { setSystem, getSystem, unit, toDisp, toSI, fmt, fmtU } from './units.js?v=202611280644';
+import { renderEquipment, renderMethod } from './docs.js?v=202611280644';
+import { initVisual, updateVisual } from './visual.js?v=202611280644';
+import { initProfileEditor, openProfileEditor } from './profile-editor.js?v=202611280644';
+import { runSchedule, levelLabel, CLIMATE_KEYS, CLIMATE_LABELS, climateMonth } from './season.js?v=202611280644';
+import { CLIMATE } from './data/equipment.js?v=202611280644';
 
 // ------------------------------------------------------------------ state
 const DEFAULTS = {
@@ -24,6 +24,7 @@ const DEFAULTS = {
     standby: { faceMin: 20, blastMin: 15, relocMin: 10, fuelMin: 15 }, assumptions: { dustEffLoss: 0.08, dustCapKmh: 40, darkEffLoss: 0.05 }, bunching: 1, passRule: 'third', loadTimeMethod: 'n', travelModel: 'sim', mfUseAvailability: false,
     brakingDecel: 0.6, massFactor: 1.05, idleLF: 0.15, hotRetarderDeratePerC: 0.01, firstPassFrac: 0.2, frozenFillMult: 0.9, frozenCycleMult: 1.1 },
   units: 'si',
+  name: '',
 };
 function pickMat(id) { const m = byId(MATERIALS, id); return { digTm3: m.digTm3, swellPct: m.swellPct, bankTm3: m.bankTm3 ?? '', fill: m.fill }; }
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -378,6 +379,7 @@ function renderProjBar() {
   const m = $('#pb-material'); if (m) m.innerHTML = `<b>${esc(byId(MATERIALS, st.materialId)?.name || 'Material')}</b><small>${fmt('dens', md.loose, 2)} ${unit('dens')} in the truck</small>`;
   const sh = $('#pb-shift'); if (sh) sh.innerHTML = `<b>Work hours</b><small>${shiftSummary()} · ${st.ops.daysPerYear} d/yr</small>`;
   const day = $('#pb-day'); if (day) day.hidden = !st.season.checkDay;
+  const nm = $('#scn-name'); if (nm) nm.placeholder = autoName();
   const s = $('#pb-status'); if (!s || !r) return;
   const lvl = esc(levelLabel(st.season.level));
   if (r.season) {
@@ -631,6 +633,83 @@ function download(name, text, type) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
 }
 
+// ------------------------------------------------------------------ scenario name + one-page report
+let printTitle = '';
+// name typed by the user, else a descriptive default: loaders · trucks · material · start date
+function autoName() {
+  const short = n => n.replace(/^(CAT|John Deere|Komatsu|Volvo|P&H)\s+/i, '');
+  const L = state.loaders.filter(x => +x.count > 0).map(x => `${+x.count}x${short(byId(LOADERS, x.modelId)?.name || '')}`).join('+');
+  const T = state.trucks.filter(x => +x.count > 0).map(x => `${+x.count}x${short(byId(TRUCKS, x.modelId)?.name || '')}`).join('+');
+  return `${L} ${T} ${byId(MATERIALS, state.materialId)?.name.split(' ')[0] || ''} ${state.site.date || todayISO()}`.replace(/\s+/g, ' ').trim();
+}
+const scenarioName = () => (String(state.name || '').trim() || autoName());
+const fileSafe = s => s.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 100) || 'scenario';
+function profileSVG(r) {
+  const segs = r.segs; if (!segs || !segs.length) return '';
+  const x0 = segs[0].x0, x1 = segs.at(-1).x0 + segs.at(-1).len, zs = segs.flatMap(s => [s.z0, s.z1]);
+  const zmin = Math.min(...zs), zmax = Math.max(...zs), dz = Math.max(zmax - zmin, 10), W = 330, H = 78;
+  const X = x => 26 + (x - x0) / (x1 - x0) * (W - 34), Y = z => 8 + (1 - (z - zmin) / dz) * (H - 22);
+  const d = segs.map((s, i) => `${i ? 'L' : 'M'}${X(s.x0).toFixed(1)},${Y(s.z0).toFixed(1)} L${X(s.x0 + s.len).toFixed(1)},${Y(s.z1).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" class="pr-prof"><path d="${d} L${X(x1)},${H - 14} L${X(x0)},${H - 14} Z" class="pr-prof-a"/><path d="${d}" class="pr-prof-l"/>
+    <text x="2" y="${Y(zmax) + 3}">${fmt('len', zmax, 0)}</text><text x="2" y="${Y(zmin) + 3}">${fmt('len', zmin, 0)}</text>
+    <text x="${X(x0)}" y="${H - 3}">Load</text><text x="${X(x1)}" y="${H - 3}" text-anchor="end">Dump · ${fmtU('len', r.totalHaulM, 0)}</text></svg>`;
+}
+function buildReport() {
+  const el = $('#print-report'), r = result; if (!el || !r) return;
+  const p = r.prod, md = matDerived(), tgt = targetCalc(r), wf = waterfall(), st = state, o = st.ops;
+  const [verdict] = mfMessage(r.mf), N = r.trucks.reduce((s, t) => s + t.n, 0);
+  const rise = r.segs.reduce((s, x) => s + Math.max(0, x.z1 - x.z0), 0), fall = r.segs.reduce((s, x) => s + Math.max(0, x.z0 - x.z1), 0);
+  const mat = byId(MATERIALS, st.materialId), kv = rows => rows.filter(Boolean).map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
+  const tile = (k, v, s) => `<div class="pr-tile"><span>${k}</span><b>${v}</b>${s ? `<small>${s}</small>` : ''}</div>`;
+  const active = st.loaders.filter(x => +x.count > 0);
+  const loaders = r.loaders.map((l, j) => {
+    const raw = active[j] || {}, b = l.model.buckets.find(x => x.id === raw.bucketId) || {}, f = setupFactor(l), side = byId(LOADING_SIDES, l.loadingSide || 'single');
+    return `<tr><td><b>${esc(l.model.name)}</b></td><td>${+raw.count || 1}</td><td>${fmtU('vol', l.bucketM3, 1)}${b.maxT ? ` · ≤ ${fmtU('mass', b.maxT, 0)}/pass` : ''}</td><td>${esc(f.setup ? f.setup.short : '')}${f.setup && f.setup.id === 'bench' ? ` ${fmtU('len', +l.benchHeightM || 0, 1)}` : ''} · ${esc(side ? side.short : '')}</td><td>${r.trucks[0]?.pairs[j]?.tc.toFixed(1) ?? '—'} s</td><td>${(l.A * 100).toFixed(0)} %</td></tr>`;
+  }).join('');
+  const trucks = r.trucks.map(t => {
+    const tph = t.loadT / t.ct * 3600 * lastOps.jobEff * lastOps.utilization * lastOps.truckUtil * lastOps.condFactor * t.A;
+    const passes = t.pairs.map(x => (+x.n).toFixed(o.passRule === 'exact' ? 1 : 0)).join(' / ');
+    return `<tr><td><b>${esc(t.truck.name)}</b></td><td>${t.n}</td><td>${(t.A * 100).toFixed(0)} %</td><td>${fmt('mass', t.loadT, 1)}</td><td>${passes}</td><td>${min(t.spotS)}</td><td>${min(t.loadTimeS)}</td><td>${min(t.haul.t)}</td><td>${min(t.dumpS)}</td><td>${min(t.ret.t)}</td><td><b>${min(t.ct)}</b></td><td>${fmt('rate', tph, 0)}</td></tr>`;
+  }).join('');
+  const sr = seasonResult;
+  // month by month, or by quarter when the schedule runs longer than a year
+  let cols = sr && sr.rows.length ? sr.rows.map(x => ({ lab: `${MON[x.m]} ${String(x.y).slice(2)}`, t: x.monthT, d: x.workDays })) : [];
+  const byQ = cols.length > 12;
+  if (byQ) { const q = {}; sr.rows.forEach(x => { const k = `Q${Math.floor(x.m / 3) + 1} ${String(x.y).slice(2)}`; (q[k] = q[k] || { lab: k, t: 0, d: 0 }); q[k].t += x.monthT; q[k].d += x.workDays; }); cols = Object.values(q).slice(0, 13); }
+  const months = cols.map(x => `<td>${x.lab}<br><b>${fmt('mass', x.t / 1000, 0)}</b><br><small>${x.d.toFixed(0)} d</small></td>`).join('');
+  const warn = r.warnings.slice(0, 4);
+  el.innerHTML = `<header class="pr-head"><div><small>Match Factor Calculator · scenario</small><h1>${esc(scenarioName())}</h1>
+      <p>${esc(byId(MATERIALS, st.materialId)?.name || '')} · ${active.map(x => `${+x.count} × ${esc(byId(LOADERS, x.modelId).name)}`).join(' + ')} · ${st.trucks.filter(x => +x.count > 0).map(x => `${+x.count} × ${esc(byId(TRUCKS, x.modelId).name)}`).join(' + ')} · ${fmtU('len', r.totalHaulM, 0)} one way</p></div>
+      <div class="pr-mf"><span>Match factor</span><b>${r.mf.toFixed(2)}</b><small>${esc(verdict)}</small></div></header>
+    <section class="pr-tiles">
+      ${tile(r.season ? 'Production (season avg)' : 'Production', fmtU('rate', p.tph, 0), `${fmtU('mass', p.dayT, 0)} / day · ${fmtU('mass', p.shiftT, 0)} / shift`)}
+      ${tile('Volume', `${fmt('vol', p.tph / md.bank, 0)} ${bcU()}/h`, `${fmt('vol', p.tph / md.loose, 0)} ${lcU()}/h at the dump`)}
+      ${tile('Per year', fmtU('mass', p.yearT / 1e6, 2).replace(unit('mass'), `M ${unit('mass')}`), `${o.daysPerYear} working days`)}
+      ${tile('Trucks for MF = 1', r.trucksForMF1 ? r.trucksForMF1.toFixed(1) : '—', `now ${N} · deploy ${Math.ceil(r.trucksForMF1WithAvail || 0)} incl. availability`)}
+      ${tile('Bottleneck', esc(p.bottleneck), `loader eff. ${(p.loaderEff * 100).toFixed(0)} % · truck eff. ${(p.truckEff * 100).toFixed(0)} %`)}
+      ${tile('Fuel', `${fmt('fuelpm', r.fuel.lPerT, 3)} ${unit('fuelpm')}`, `${fmt('co2pm', r.fuel.co2KgPerT, 2)} ${unit('co2pm')} CO₂ · ${fmt('fuel', r.fuel.truckLph + r.fuel.loaderLph, 0)} ${unit('fuel')}/h`)}
+    </section>
+    ${tgt.ok ? `<section class="pr-target"><b>Target ${fmt('vol', tgt.V, 0)} ${volU(tgt.basis)}</b> = ${fmtU('mass', tgt.tonnes, 0)} → <b>${tgt.workDays.toFixed(0)} working days</b>, start ${esc(tgt.start)}, finish <b>${esc(tgt.finish)}</b> · ${tgt.totalLoads.toLocaleString('en-US')} truck loads</section>` : ''}
+    <div class="pr-cols">
+      <section><h2>Inputs</h2><table class="pr-kv">${kv([
+        ['Dates', `start ${esc(st.site.date || todayISO())}${st.season.end ? ` · end ${esc(st.season.end)}` : ''}`],
+        ['Material', `${esc(mat?.name || '')}: ${fmt('dens', md.bank, 2)} ${unit('dens')} dig face, swell ${(+st.material.swellPct || 0).toFixed(0)} %, ${fmt('dens', md.loose, 2)} ${unit('dens')} loose${st.material.frozen ? ' · frozen' : ''}`],
+        ['Weather', r.season ? `${esc(levelLabel(st.season.level))} · cycle shown for the most common day: ${esc(r.season.ref.label.toLowerCase())}` : esc(weatherLabel(r))],
+        ['Shifts', `${shiftSummary()} · ${o.daysPerYear} d/yr · ${fmtH(wf.dayEff || 0)} effective of ${fmtH(wf.schedH || 0)} per day`],
+        ['Road', `${esc(byId(ROADS, st.site.roadId)?.name.split(',')[0] || '')} · ${esc(byId(GRADING, st.site.gradingId)?.name || '')}${st.site.waterTruck ? ' · water truck' : ''}`],
+        ['RR · traction', `${r.road.rr.toFixed(1)} % · ${r.road.mu.toFixed(2)} · speed limit ${fmtU('speed', st.site.speedLimitKmh, 0)}`],
+        ['Haul profile', `${fmtU('len', r.totalHaulM, 0)} one way · climb ${fmt('len', rise, 0)} / descent ${fmt('len', fall, 0)} ${unit('len')} loaded`],
+      ])}</table></section>
+      <section><h2>Haul profile</h2>${profileSVG(r)}<p class="pr-note">${esc(st.profile.name || '')}</p></section>
+    </div>
+    <section><h2>Loading units</h2><table class="pr-t"><thead><tr><th>Loader</th><th>No.</th><th>${'Bucket / dipper'}</th><th>Setup · loading</th><th>Cycle</th><th>Avail.</th></tr></thead><tbody>${loaders}</tbody></table></section>
+    <section><h2>Trucks — cycle (min)</h2><table class="pr-t"><thead><tr><th>Truck</th><th>No.</th><th>Avail.</th><th>Load ${unit('mass')}</th><th>Passes${r.loaders.length > 1 ? ` (${r.loaders.map(l => esc(l.model.name.replace(/^(CAT|John Deere|Komatsu|Volvo|P&H)\s+/, ''))).join(' / ')})` : ''}</th><th>Spot</th><th>Load</th><th>Haul</th><th>Dump</th><th>Return</th><th>Cycle</th><th>${unit('rate')}/truck</th></tr></thead><tbody>${trucks}</tbody></table></section>
+    ${wf.shifts.length ? `<section><h2>Where the shift time goes (hours, average truck)</h2><table class="pr-t"><thead><tr><th>Shift</th>${['Scheduled', 'Meetings', 'Downtime', 'Standby', 'Small delays', 'Weather, dust, dark', 'Effective'].map(x => `<th>${x}</th>`).join('')}</tr></thead><tbody>${wf.shifts.map(sh => `<tr><td class="nw">${esc(sh.name)} <small>${sh.clock}</small></td>${sh.rows.map(x => `<td>${x.total ? `<b>${x.h.toFixed(2)}</b>` : `−${(-x.h).toFixed(2)}`}</td>`).join('')}</tr>`).join('')}</tbody></table></section>` : ''}
+    ${months ? `<section><h2>${byQ ? 'By quarter' : 'Month by month'} (thousand ${unit('mass')} moved · working days)</h2><table class="pr-t pr-months"><tr>${months}</tr></table></section>` : ''}
+    ${warn.length ? `<section class="pr-warn"><h2>Check</h2><ul>${warn.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}
+    <footer>Printed ${todayISO()} · ${getSystem() === 'si' ? 'metric' : 'imperial'} units · match factor: Burt &amp; Caccetta (2008); values marked estimate are listed in Equipment Data · youmansyuan.github.io/match-factor-calculator</footer>`;
+}
+
 // ------------------------------------------------------------------ events
 function wire() {
   document.addEventListener('input', e => { if (e.target.dataset.bind) onBoundInput(e); });
@@ -668,8 +747,14 @@ function wire() {
   window.addEventListener('resize', setHdrH);
   $('#btn-export').onclick = exportCSV;
   $('#btn-print').onclick = () => window.print();
-  $('#btn-save').onclick = () => download('match-factor-scenario.json', JSON.stringify(state, null, 1), 'application/json');
-  $('#scenario-file').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { state = migrate(JSON.parse(await f.text())); boot(); } catch (err) { alertBox(`Could not open scenario: ${err.message}`); } e.target.value = ''; };
+  window.addEventListener('beforeprint', () => { buildReport(); printTitle = document.title; document.title = scenarioName(); });
+  window.addEventListener('afterprint', () => { if (printTitle) document.title = printTitle; });
+  $('#btn-save').onclick = () => { state.name = scenarioName(); renderBound(); save(); download(`${fileSafe(state.name)}.json`, JSON.stringify(state, null, 1), 'application/json'); };
+  $('#scenario-file').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { state = migrate(JSON.parse(await f.text())); state.name = f.name.replace(/\.json$/i, ''); boot(); $('#scn-name').value = state.name; } catch (err) { alertBox(`Could not open scenario: ${err.message}`); }
+    e.target.value = '';
+  };
   $('#btn-reset').onclick = () => { const pts = state.profile.points, nm = state.profile.name; state = clone(DEFAULTS); state.profile.points = pts; state.profile.name = nm; boot(); };
 }
 // Each tab (and each Detailed section) keeps its own scroll position

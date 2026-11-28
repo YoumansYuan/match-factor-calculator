@@ -170,13 +170,36 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
   main { padding: 14px 16px 30px; }
   .brand p { display: none; }
 }
+/* One-page Letter report: only #print-report is printed */
+#print-report { display: none; }
+@page { size: letter; margin: 0.45in; }
 @media print {
-  .v-ctl, .fleet-bar .add, .mini-step, .topbar, .actions, .foot, #tab-equip, #tab-method { display: none !important; }
-  .layout { grid-template-columns: 1fr; }
-  .results { position: static; max-height: none; overflow: visible; }
-  details { break-inside: avoid; }
-  details:not([open]) > *:not(summary) { display: none; }
-  body { background: #fff; }
+  body > *:not(#print-report) { display: none !important; }
+  html, body { background: #fff !important; color: #111 !important; }
+  #print-report { display: block; font: 9pt/1.32 'IBM Plex Sans', system-ui, sans-serif; color: #111; }
+  #print-report h1 { font-size: 15pt; margin: 1px 0 2px; letter-spacing: -.01em; }
+  #print-report h2 { font-size: 8pt; text-transform: uppercase; letter-spacing: .06em; color: #555; margin: 9px 0 3px; border-bottom: 1px solid #ccc; padding-bottom: 2px; }
+  #print-report small { color: #555; }
+  .pr-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 6px; }
+  .pr-head p { margin: 0; color: #333; }
+  .pr-mf { text-align: right; min-width: 110px; } .pr-mf span { display: block; font-size: 7.5pt; text-transform: uppercase; color: #555; }
+  .pr-mf b { display: block; font-size: 24pt; line-height: 1; } .pr-mf small { font-weight: 600; color: #111 !important; }
+  .pr-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 8px; }
+  .pr-tile { border: 1px solid #bbb; border-radius: 5px; padding: 4px 7px; }
+  .pr-tile span { display: block; font-size: 7pt; text-transform: uppercase; letter-spacing: .04em; color: #555; }
+  .pr-tile b { display: block; font-size: 12pt; } .pr-tile small { display: block; font-size: 7.5pt; }
+  .pr-target { margin-top: 6px; padding: 4px 8px; background: #f2f2f2; border-radius: 5px; }
+  .pr-cols { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; }
+  .pr-kv { width: 100%; border-collapse: collapse; } .pr-kv th { text-align: left; font-weight: 600; width: 82px; vertical-align: top; padding: 1.5px 6px 1.5px 0; } .pr-kv td { padding: 1.5px 0; }
+  .pr-t { width: 100%; border-collapse: collapse; font-size: 8.3pt; } .pr-t th, .pr-t td { border-bottom: 1px solid #ddd; padding: 2px 4px; text-align: right; }
+  .pr-t th:first-child, .pr-t td:first-child { text-align: left; } .pr-t th { font-size: 7.3pt; color: #555; font-weight: 600; }
+  .pr-months td { text-align: center !important; border: 1px solid #ddd; font-size: 7.5pt; line-height: 1.2; }
+  .pr-prof { width: 100%; height: auto; } .pr-prof-a { fill: #e8e2d6; } .pr-prof-l { fill: none; stroke: #6b5a3a; stroke-width: 1.4; } .pr-prof text { font-size: 7px; fill: #555; }
+  .pr-t .nw { white-space: nowrap; }
+  .pr-note { margin: 0; font-size: 7.5pt; color: #555; }
+  .pr-warn ul { margin: 0; padding-left: 16px; font-size: 8pt; }
+  #print-report footer { margin-top: 10px; padding-top: 4px; border-top: 1px solid #ccc; font-size: 7pt; color: #666; }
+  #print-report section, #print-report table { break-inside: avoid; }
 }
 
 /* ---------- visual mode */
@@ -442,6 +465,8 @@ details.sub > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); f
 .pb-day { flex-basis: 100%; display: flex; gap: 14px; align-items: center; background: var(--accent-soft); border-radius: 8px; padding: 6px 10px; }
 .pb-day[hidden] { display: none; }
 .pb-day select { width: 170px; } .pb-day input[type=number] { width: 110px; }
+.pb-scn .pb-name { width: 230px; }
+.pb-scn .file { position: relative; overflow: hidden; } .pb-scn .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .pb-status { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
 .btn.sm { padding: 4px 10px; font-size: 12px; }
 .projbar input[type=number], .projbar input[type=date], .projbar select { padding: 4px 6px; }

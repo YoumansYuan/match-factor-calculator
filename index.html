@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=202611280619">
+  <link rel="stylesheet" href="css/styles.css?v=202611280644">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -50,6 +50,12 @@
       <label>Sky<select data-bind="site.skyId" class="sel-sky"></select></label>
       <label>Road surface<select data-bind="site.surfaceId" class="sel-surface"></select></label>
       <label>Air <span class="u" data-u="temp"></span><input type="number" data-bind="site.tempC" data-q="temp" step="1" placeholder="month avg"></label>
+    </div>
+    <div class="pb-group pb-scn"><span class="pb-lbl">Scenario</span>
+      <input type="text" class="pb-name" data-bind="name" id="scn-name" placeholder="Scenario name (= file name)" aria-label="Scenario name, used as the file name" maxlength="80">
+      <button class="btn ghost sm" id="btn-save" title="Download this scenario as a .json file named after it">Save</button>
+      <label class="btn ghost sm file" title="Open a saved .json scenario">Open<input type="file" id="scenario-file" accept=".json"></label>
+      <button class="btn ghost sm" id="btn-print" title="One-page Letter summary — choose Save as PDF in the print dialog">Print / PDF</button>
     </div>
     <p class="pb-status" id="pb-status"></p>
   </div>
@@ -258,9 +264,6 @@
 
       <div class="actions">
         <button class="btn" id="btn-export">Export results (CSV)</button>
-        <button class="btn ghost" id="btn-save">Save scenario (JSON)</button>
-        <label class="btn ghost file">Open scenario<input type="file" id="scenario-file" accept=".json"></label>
-        <button class="btn ghost" id="btn-print">Print / PDF</button>
         <button class="btn ghost danger" id="btn-reset">Reset defaults</button>
       </div>
     </div>
@@ -329,6 +332,7 @@
   Planning-level estimates only — calibrate against site time studies and dispatch data. Equipment names are trademarks of their owners; this tool is independent and not affiliated with any manufacturer.
 </footer>
 
-<script type="module" src="js/app.js?v=202611280619"></script>
+<script type="module" src="js/app.js?v=202611280644"></script>
+<div id="print-report" aria-hidden="true"></div>
 </body>
 </html>
